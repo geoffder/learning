@@ -1,6 +1,6 @@
-import csv
-import matplotlib.pyplot as plt
-import re
+import csv # loading of delimited files (should do myself tbh)
+import matplotlib.pyplot as plt # plotting functions
+import re #regular expressions
 import numpy as np # arrays
 
 keys = ['chip', 'transistors', 'year', 'make', 'size', 'area']
