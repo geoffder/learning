@@ -28,5 +28,5 @@ for i in range(len(years)):
     transistors[i] = transistors[i].split('[')[0] #.replace(',','') instead use regex
     transistors[i] = int(re.sub('[^0-9]','', transistors[i]))
 
-plt.plot(years, np.log(transistors))
+plt.scatter(years, np.log(transistors))
 plt.show()
