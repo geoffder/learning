@@ -24,7 +24,13 @@ print("b: " + str(b))
 Yhat = np.add(np.multiply(X,a),b)
 # or simply Yhat = a*X + b since they are already numpy array objects
 
+# calculate R squared
+SSres = ((Y - Yhat)**2).sum()
+SStot = ((Y - Y.mean())**2).sum()
+Rsq = 1.0 - SSres/SStot
+print("R^2 = " + str(Rsq))
+
 # plot
-plt.scatter(X, Y)s
+plt.scatter(X, Y)
 plt.plot(X,Yhat)
 plt.show()
