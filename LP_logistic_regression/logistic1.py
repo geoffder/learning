@@ -18,7 +18,5 @@ print(Xb@w == Xb.dot(w))
 def sigmoid(z):
  return 1. / (1. + np.exp(-z))
 
-print(sigmoid(z))
-
 sns.lineplot(x = range(N), y = sigmoid(z))
 plt.show()
