@@ -1,4 +1,5 @@
 import numpy as np
+import random
 import pandas as pd
 import matplotlib.pyplot as plt
 import seaborn as sns
@@ -8,7 +9,7 @@ import seaborn as sns
 # and how things work, particularly pandas
 def get_data():
     df = pd.read_csv('ecommerce_data.csv')
-    print(df.head())
+    #print(df.head())
 
     # only want to work with user_actions 0 and 1
 
@@ -39,31 +40,102 @@ def get_data():
     df['ones'] = 1
     # print(df.head())
 
-    # maybe take the ones off? not sure if done the same way for logistic
-    #X = df[['is_mobile', 'n_products_viewed', 'visit_duration','is_returning_visitor', '12am_6am', '6am_12pm', '12pm_6pm', '6pm_12am', 'ones']]
-    X = df[['is_mobile', 'n_products_viewed', 'visit_duration','is_returning_visitor', '12am_6am', '6am_12pm', '12pm_6pm', '6pm_12am']]
+    X = df[['is_mobile', 'n_products_viewed', 'visit_duration','is_returning_visitor', '12am_6am', '6am_12pm', '12pm_6pm', '6pm_12am', 'ones']]
+    labels = list(X.columns.values) # column names
+
     X = X.values
-    Y = df['user_action'].values
+    T = df['user_action'].values
 
-    return X, Y
+    return X, T, labels
 
-X, Y = get_data()
-N, D = X.shape
-w = np.random.randn(D) / np.sqrt(D)
-b = 0
+X, T, labels = get_data()
+N, D = X.shape # bias column already included in data processing code
 
-z = X @ w + b
-
+# calculate Y
 def sigmoid(z):
     return 1. / (1. + np.exp(-z))
 
-Yhat = np.round(sigmoid(z)) # P_Y_given_X rounded to give 0s and 1s
-mse = (Y - Yhat).T @ (Y - Yhat) / N
+# calculate derivative of obejective/cost function
+def costDeriv(X, Y, T):
+    return X.T @ (Y - T)
 
-correct = 0
-for i in range(len(Yhat)):
-    if (Yhat[i] == Y[i]):
-        correct += 1
+# my version of calculating cross entropy error
+def crossEntropy(T, Y):
+    return -(T * np.log(Y) + (1 - T)*np.log(1 - Y)).sum()
+# lazy programmers way (in case mine fails, which it shouldn't)
+# def crossEntropy(T, Y):
+#     E = 0
+#     for i in range(N):
+#         if T[i] == 1:
+#             E += np.log(Y[i])
+#         else:
+#             E += np.log(1 - Y[i])
+#     return E
 
-print("percent correct = " + str(correct/N))
-print("mse =", mse)
+# find w with gradient descent
+learning_rate = .001
+tries = 1000
+
+w = np.random.randn(D) / np.sqrt(D) #initialize
+Y = sigmoid(X @ w)
+costs = [crossEntropy(T,Y)]
+for i in range(tries):
+    w -= learning_rate*costDeriv(X, Y, T)
+    Y = sigmoid(X @ w)
+    costs.append(crossEntropy(T, Y))
+    #costs.append(crossEntropy(T, np.abs(Y-.0000001)))
+
+# how well did it do
+percent = (T == np.round(Y)).sum() / N
+print('----- fitting the entire set -----')
+print('w:', w)
+print('cross-entropy error:', costs[-1])
+print('percent correct:', percent)
+# plt.plot(costs)
+# plt.show()
+
+# note: LP does the test generation differently using scikit learn
+# see his version for something which probably takes fewer lines
+# now, do it again, but with train and test sets
+train_size = int(N * .8) #80% train, 20% test
+#train_idx = np.sort(np.random.randint(0, N, train_size)) # this generates duplicate numbers
+train_idx = random.sample(range(N), train_size) # np.random.sample works differently, had to import random
+idx = np.arange(N)
+test_idx = np.delete(idx, train_idx)
+print('N:', N, 'train size:', train_size, 'test size:', len(test_idx))
+# use indices to define sets
+Xtrain = X[train_idx,:]
+Ttrain = T[train_idx]
+Xtest = X[test_idx,:]
+Ttest = T[test_idx]
+
+# use gradient descent to train model
+w = np.random.randn(D) / np.sqrt(D) #initialize
+Ytrain = sigmoid(Xtrain @ w)
+costs = [crossEntropy(Ttrain,Ytrain)]
+for i in range(tries):
+    w -= learning_rate*costDeriv(Xtrain, Ytrain, Ttrain)
+    Ytrain = sigmoid(Xtrain @ w)
+    costs.append(crossEntropy(Ttrain, Ytrain))
+
+percent_train = (Ttrain == np.round(Ytrain)).sum() / train_size
+label_weights = [labels[i] + ': ' + str(w[i]) for i in range(D)]
+label_weights_block = ''
+for i in range(D):
+    label_weights_block += label_weights[i]
+    if i < D-1:
+        label_weights_block += '\n'
+print('----- fitting training set -----')
+print('weights:')
+print(label_weights_block)
+print('cross-entropy error:', costs[-1])
+print('percent correct:', percent_train)
+plt.plot(costs)
+plt.show()
+
+# run test data through model
+Ytest = sigmoid(Xtest @ w)
+percent_test = (Ttest == np.round(Ytest)).sum() / len(test_idx)
+print('----- test set results-----')
+print('cross-entropy error:', crossEntropy(Ttest, Ytest))
+print('percent correct:', percent_test)

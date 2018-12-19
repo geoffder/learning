@@ -34,9 +34,9 @@ def crossEntropy_LP(T, Y):
     E = 0
     for i in range(N):
         if T[i] == 1:
-            E -= np.log(Y[i]).sum()
+            E -= np.log(Y[i])
         else:
-            E -= np.log(1 - Y[i]).sum()
+            E -= np.log(1 - Y[i])
     return E
 
 cost = crossEntropy(T, Y)
