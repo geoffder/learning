@@ -22,6 +22,7 @@ def getMarketData():
         metrics[tickers[i]]['high'] = np.array([x['high'] for x in minData[i]])
         Xlist.append(metrics[tickers[i]]['high'])
 
+    print(minData[0][0].keys())
     X = np.concatenate([Xlist], axis=1).T
     Xnorm = (X - X.mean(axis=0, keepdims=True)) / X.std(axis=0, keepdims=True)
 
