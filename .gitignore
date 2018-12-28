@@ -9,3 +9,7 @@ LP_logistic_regression/facial_recognition/fer2013\.csv
 
 
 *.npy
+
+practice/minuteData\.json
+
+practice/raceData\.json
