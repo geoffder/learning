@@ -11,7 +11,7 @@ from get_prices import getPrices
 #X, T = getPrices()
 # alternatively load data from file
 X, T = np.load('priceData.npy'), np.load('winners.npy')
-# print(X.shape, Y.shape) # X(931, 1000, 18) T(931, 3) one-hot indicator matrix
+print('input shapes:', X.shape, T.shape) # T is indicator matrix
 
 # get class label version of T
 Tlabels = np.argmax(T, axis=1)
@@ -42,17 +42,8 @@ X = np.concatenate([X_btc, X_eth, X_ltc], axis=0)
 T = np.concatenate([T_btc, T_eth, T_ltc], axis=0)
 print(X.shape,T.shape)
 
-# train and test sets
-X, T = shuffle(X, T)
-N_train = int(X.shape[0] * .8) #.8
-X_train = X[:N_train-1]
-T_train = T[:N_train-1]
-X_test = X[N_train:]
-T_test = T[N_train:]
-
 # simple keras convolutional model
 N, time, features = X.shape
-#X = X.reshape(N, time, features, 1) # reshaping because it is expecting 4 dimensions?
 
 filters1 = 72 #64
 filters2 = 36 #32
@@ -72,7 +63,7 @@ model = keras.Sequential([
     # flatten and feed through dense layer
     keras.layers.Flatten(),
     keras.layers.Dense(128, activation=tf.nn.relu),
-    keras.layers.Dropout(rate=.4), #.2 seems to do well, further testing needed to find optimum
+    keras.layers.Dropout(rate=.2), #.2 seems to do well, further testing needed to find optimum
     keras.layers.Dense(3, activation=tf.nn.softmax) #one for each output class
 ])
 
@@ -83,8 +74,21 @@ model.compile(optimizer=tf.train.AdamOptimizer(),
               loss='sparse_categorical_crossentropy',
               metrics=['accuracy'])
 
-model.fit(X_train, np.argmax(T_train, axis=1), epochs=10) # wants labels instead of indicator for some reason
+def crossValidation(model, X, T):
+    X, T = shuffle(X, T)
+    sz = int(T.shape[0]/T.shape[1])
+    scores = []
+    for k in range(T.shape[1]):
+        X_train = np.concatenate([X[:k*sz], X[k*sz+sz:]], axis=0)
+        T_train = np.concatenate([T[:k*sz], T[k*sz+sz:]], axis=0)
+        X_test = X[k*sz:k*sz+sz]
+        T_test = T[k*sz:k*sz+sz]
 
-test_loss, test_acc = model.evaluate(X_test, np.argmax(T_test, axis=1))
+        model.fit(X_train, np.argmax(T_train, axis=1), epochs=10)
+        test_loss, test_acc = model.evaluate(X_test, np.argmax(T_test, axis=1))
+        scores.append(test_acc)
 
-print('Test accuracy:', test_acc)
+    return np.mean(scores), np.std(scores)
+
+testAcc_mean, testAcc_std = crossValidation(model, X, T)
+print('mean test accuracy', testAcc_mean, 'std:', testAcc_std)

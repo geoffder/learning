@@ -18,7 +18,7 @@ async def makeRequests(endpoints, headers):
             req.get,
             endpoints[i]
         )
-        for i in range(len(tickers))
+        for i in range(len(endpoints))
     ]
     minData = []
     for response in await asyncio.gather(*futures): # in order of requests?
@@ -28,16 +28,23 @@ async def makeRequests(endpoints, headers):
 
 def buildRequests():
     # build endpoints
-    betTime = int(time.time() - 60*3) # unix epoch time, -three minutes
-    # 2000 is max number of minutes at a time, get more by repeating with different &toTs=
-    endpoints = ["https://min-api.cryptocompare.com/data/histominute?fsym=%s&tsym=USD&limit=2000&toTs=%d" % (s, betTime) for s in tickers]
+    lastTime = int(time.time() - 60*3) # unix epoch time, -three minutes
+    betTime = [int(lastTime - i*(60*2000)) for i in range(5)]
+    # 2000 is max number of minutes at a time, get more by repeating with different #&toTs=
+    endpoints = ["https://min-api.cryptocompare.com/data/histominute?fsym=%s&tsym=USD&limit=2000&toTs=%d" % (
+        s, t) for s in tickers for t in betTime]
     headers = {'authorization': 'e35795772b742f4c32495080678cdab098817bcab591b2f44d0aae61c2d32ef3'}
     return endpoints, headers
 
 def sortData(minData):
+    # first bring all of the time blocks for each coin together
+    coinData = [[],[],[]]
+    for i in range(len(coinData)):
+        for j in range(5):
+            coinData[i] += minData[int(i*j + j)]
 
     features = []
-    for coin in minData:
+    for coin in coinData:
         for key in metricKeys:
             features.append(np.array([x[key] for x in coin]))
 
@@ -52,7 +59,9 @@ def createSamples(X):
     Xlist = []
     Ylist = []
     encode = [[1,0,0], [0,1,0], [0,0,1]]
-    for t in range(1000, X.shape[0]-70, 1):
+    # start at minute 1000 (each race has 1000 minutes history data)
+    # step is number of minutes between sanples
+    for t in range(1000, X.shape[0]-70, 60):
         Xlist.append(X[t-1000:t,:])
         change = []
         for i in range(3):

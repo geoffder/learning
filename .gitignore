@@ -1,5 +1,5 @@
 
-LP_logistic_regression/all\.zip
+*.zip
 
 LP_logistic_regression/facial_recognition/example_submission\.csv
 
@@ -7,6 +7,5 @@ LP_logistic_regression/facial_recognition/fer2013\.bib
 
 LP_logistic_regression/facial_recognition/fer2013\.csv
 
-practice/winners\.npy
 
-practice/priceData\.npy
+*.npy
