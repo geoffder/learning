@@ -54,19 +54,21 @@ def sortData(minData):
     return X, Xnorm
 
 def createSamples(X):
-    length = 1000 # minutes of data per sample (leading up to prediction)
+    # sampling variables
+    hist = 1000 # minutes of data per sample (leading up to prediction)
+    raceLen = 60
 
     Xlist = []
     Ylist = []
     encode = [[1,0,0], [0,1,0], [0,0,1]]
     # start at minute 1000 (each race has 1000 minutes history data)
     # step is number of minutes between sanples
-    for t in range(1000, X.shape[0]-70, 60):
-        Xlist.append(X[t-1000:t,:])
+    for t in range(hist, X.shape[0]-raceLen+10, 60):
+        Xlist.append(X[t-hist:t,:])
         change = []
         for i in range(3):
-            priceStart = X[t+4,int(i*len(metricKeys)+1)]
-            priceEnd = X[t+64,int(i*len(metricKeys)+1)]
+            priceStart = X[t+4, int(i*len(metricKeys)+1)]
+            priceEnd = X[t+raceLen+4, int(i*len(metricKeys)+1)]
             change.append((priceEnd - priceStart)/priceStart)
         Ylist.append(encode[np.argmax(change)])
 

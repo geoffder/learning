@@ -54,12 +54,15 @@ model = keras.Sequential([
     # covolve and pool
     keras.layers.Conv1D(filters1, 3, input_shape=(time, features),activation=tf.nn.relu),
     keras.layers.MaxPooling1D(pool_size=3, strides=2),
+
     # covolve and pool
     keras.layers.Conv1D(filters2, 3, activation=tf.nn.relu),
     keras.layers.MaxPooling1D(pool_size=3, strides=2),
+
     # covolve and pool
     #keras.layers.Conv1D(filters3, 3, activation=tf.nn.relu),
     #keras.layers.MaxPooling1D(pool_size=3, strides=2),
+
     # flatten and feed through dense layer
     keras.layers.Flatten(),
     keras.layers.Dense(128, activation=tf.nn.relu),
@@ -67,8 +70,9 @@ model = keras.Sequential([
     keras.layers.Dense(3, activation=tf.nn.softmax) #one for each output class
 ])
 
-for layer in model.layers:
-    print(layer.output_shape)
+# check output shapes of each layer
+# for layer in model.layers:
+    # print(layer.output_shape)
 
 model.compile(optimizer=tf.train.AdamOptimizer(),
               loss='sparse_categorical_crossentropy',
