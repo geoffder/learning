@@ -79,8 +79,8 @@ def crossValidation(model, X, T):
     sz = int(T.shape[0]/T.shape[1])
     scores = []
     for k in range(T.shape[1]):
-        X_train = np.concatenate([X[:k*sz], X[k*sz+sz:]], axis=0)
-        T_train = np.concatenate([T[:k*sz], T[k*sz+sz:]], axis=0)
+        X_train = np.concatenate([X[:k*sz], X[k*sz+sz:]])
+        T_train = np.concatenate([T[:k*sz], T[k*sz+sz:]])
         X_test = X[k*sz:k*sz+sz]
         T_test = T[k*sz:k*sz+sz]
 
