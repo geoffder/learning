@@ -12,7 +12,7 @@ raceNumbers = [int(x['race_number']) for x in raceData]
 for i in range(len(raceData)):
     if raceNumbers[i] > lastRace:
         lastRace = raceNumbers[i]
-startRace = lastRace-380;
+startRace = lastRace-400;
 
 raceIdxs = []
 for r in range(startRace, lastRace):
