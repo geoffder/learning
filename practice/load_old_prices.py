@@ -17,7 +17,7 @@ startRace = lastRace-400;
 raceIdxs = []
 for r in range(startRace, lastRace):
     try:
-        idx = raceNumbers.index(r)
+        idx = raceNumbers.index(r) # index passes an error if the given index does not appear
         if raceData[idx]['race_duration'] == '3600' and len(minuteData['BTC']['min'][idx]) != 0:
             raceIdxs.append(idx)
     except:

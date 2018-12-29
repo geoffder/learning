@@ -11,6 +11,7 @@ from get_prices import getPrices
 #X, T = getPrices()
 # alternatively load data from file
 X, T = np.load('priceData.npy'), np.load('winners.npy')
+#X, T = np.load('ETHORSE_priceData.npy'), np.load('ETHORSE_winners.npy')
 
 print('input shapes:', X.shape, T.shape) # T is indicator matrix
 
@@ -44,40 +45,48 @@ T = np.concatenate([T_btc, T_eth, T_ltc], axis=0)
 print(X.shape,T.shape)
 
 # simple keras convolutional model
-N, time, features = X.shape
+N, time, num_features = X.shape
 
 filters1 = 72 #64
 filters2 = 36 #32
 filters3 = 18
 
-# try out regularization next. also, save data as a csv so I don't make requests over and over
-model = keras.Sequential([
-    # covolve and pool
-    keras.layers.Conv1D(filters1, 3, input_shape=(time, features),activation=tf.nn.relu),
-    keras.layers.MaxPooling1D(pool_size=3, strides=2),
+def buildNetwork(time, num_features, filters1=72, filters2=36, filters3=18):
+    # try out regularization next.
+    model = keras.Sequential([
+        # covolve and pool
+        keras.layers.Conv1D(filters1, 3, input_shape=(time, num_features),activation=tf.nn.relu),
+        keras.layers.MaxPooling1D(pool_size=3, strides=1), # strides down from 2 to 1
 
-    # covolve and pool
-    keras.layers.Conv1D(filters2, 3, activation=tf.nn.relu),
-    keras.layers.MaxPooling1D(pool_size=3, strides=2),
+        # covolve and pool
+        keras.layers.Conv1D(filters2, 3, activation=tf.nn.relu),
+        keras.layers.MaxPooling1D(pool_size=3, strides=1),
 
-    # covolve and pool
-    #keras.layers.Conv1D(filters3, 3, activation=tf.nn.relu),
-    #keras.layers.MaxPooling1D(pool_size=3, strides=2),
+        # covolve and pool
+        #keras.layers.Conv1D(filters3, 3, activation=tf.nn.relu),
+        #keras.layers.MaxPooling1D(pool_size=3, strides=2),
 
-    # flatten and feed through dense layer
-    keras.layers.Flatten(),
-    keras.layers.Dense(128, activation=tf.nn.relu),
-    keras.layers.Dropout(rate=.2), #.2 seems to do well, further testing needed to find optimum
-    keras.layers.Dense(3, activation=tf.nn.softmax) #one for each output class
-])
+        # flatten and feed through dense layer
+        keras.layers.Flatten(),
+        keras.layers.Dense(128, activation=tf.nn.relu), #128
+        keras.layers.Dense(128, activation=tf.nn.relu),
+        #keras.layers.Dense(128, activation=tf.nn.relu),
+        keras.layers.Dropout(rate=.2), #.2 seems to do well, further testing needed to find optimum
+        keras.layers.Dense(3, activation=tf.nn.softmax) #one for each output class
+    ])
+    return model
+
+model = buildNetwork(time, num_features, filters1, filters2, filters3)
 
 # check output shapes of each layer
-# for layer in model.layers:
-#     print(layer.name)
-#     print(layer.output_shape)
+if 0:
+    for layer in model.layers:
+        print(layer.name)
+        print(layer.output_shape)
 
 model.compile(optimizer=tf.train.AdamOptimizer(),
-              loss='sparse_categorical_crossentropy',
+              #loss='sparse_categorical_crossentropy', # targets as integers
+              loss='categorical_crossentropy', # targets one-hot encoded
               metrics=['accuracy'])
 
 def crossValidation(model, X, T):
@@ -90,8 +99,8 @@ def crossValidation(model, X, T):
         X_test = X[k*sz:k*sz+sz]
         T_test = T[k*sz:k*sz+sz]
 
-        model.fit(X_train, np.argmax(T_train, axis=1), epochs=10)
-        test_loss, test_acc = model.evaluate(X_test, np.argmax(T_test, axis=1))
+        model.fit(X_train, T_train, epochs=10)
+        test_loss, test_acc = model.evaluate(X_test, T_test)
         scores.append(test_acc)
 
     return np.mean(scores), np.std(scores)
@@ -105,13 +114,17 @@ def predictOldRaces(model):
 
     # cant change attribute after creation in this way, need to write this code differently
     # need to use these data sets from the start if I want to do this
-    model.get_layer('conv1d').input_shape = (None, 998, 18)
+    #model.get_layer('conv1d').input_shape = (None, 998, 18)
+
+    # just rebuild a new network with the correct input shape
+    N, time, num_features = X.shape
+    model = buildNetwork(time, num_features, filters1, filters2, filters3)
     model.compile(optimizer=tf.train.AdamOptimizer(),
-                  loss='sparse_categorical_crossentropy',
+                  loss='categorical_crossentropy',
                   metrics=['accuracy'])
 
-    model.fit(X, np.argmax(T, axis=1), epochs=10)
-    ethorse_loss, ethorse_acc = model.evaluate(Xhorse, np.argmax(Thorse, axis=1))
+    model.fit(X, T, epochs=10)
+    ethorse_loss, ethorse_acc = model.evaluate(Xhorse, Thorse)
     print('ethorse test accuracy', ethorse_acc)
 
 #predictOldRaces(model)
