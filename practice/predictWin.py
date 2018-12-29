@@ -11,6 +11,7 @@ from get_prices import getPrices
 #X, T = getPrices()
 # alternatively load data from file
 X, T = np.load('priceData.npy'), np.load('winners.npy')
+
 print('input shapes:', X.shape, T.shape) # T is indicator matrix
 
 # get class label version of T
@@ -72,7 +73,8 @@ model = keras.Sequential([
 
 # check output shapes of each layer
 # for layer in model.layers:
-    # print(layer.output_shape)
+#     print(layer.name)
+#     print(layer.output_shape)
 
 model.compile(optimizer=tf.train.AdamOptimizer(),
               loss='sparse_categorical_crossentropy',
@@ -96,3 +98,20 @@ def crossValidation(model, X, T):
 
 testAcc_mean, testAcc_std = crossValidation(model, X, T)
 print('mean test accuracy', testAcc_mean, 'std:', testAcc_std)
+
+def predictOldRaces(model):
+    X, T = np.load('priceData_998.npy'), np.load('winners_998.npy') # fewer time points to match
+    Xhorse, Thorse = np.load('ETHORSE_priceData.npy'), np.load('ETHORSE_winners.npy')
+
+    # cant change attribute after creation in this way, need to write this code differently
+    # need to use these data sets from the start if I want to do this
+    model.get_layer('conv1d').input_shape = (None, 998, 18)
+    model.compile(optimizer=tf.train.AdamOptimizer(),
+                  loss='sparse_categorical_crossentropy',
+                  metrics=['accuracy'])
+
+    model.fit(X, np.argmax(T, axis=1), epochs=10)
+    ethorse_loss, ethorse_acc = model.evaluate(Xhorse, np.argmax(Thorse, axis=1))
+    print('ethorse test accuracy', ethorse_acc)
+
+#predictOldRaces(model)
