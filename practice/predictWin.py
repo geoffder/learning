@@ -108,7 +108,7 @@ def crossValidation(model, X, T):
 testAcc_mean, testAcc_std = crossValidation(model, X, T)
 print('mean test accuracy', testAcc_mean, 'std:', testAcc_std)
 
-def predictOldRaces(model):
+def predictOldRaces():
     X, T = np.load('priceData_998.npy'), np.load('winners_998.npy') # fewer time points to match
     Xhorse, Thorse = np.load('ETHORSE_priceData.npy'), np.load('ETHORSE_winners.npy')
 
@@ -127,4 +127,4 @@ def predictOldRaces(model):
     ethorse_loss, ethorse_acc = model.evaluate(Xhorse, Thorse)
     print('ethorse test accuracy', ethorse_acc)
 
-#predictOldRaces(model)
+#predictOldRaces()
