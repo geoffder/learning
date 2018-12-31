@@ -16,7 +16,7 @@ X, T = np.load('priceData.npy'), np.load('winners.npy')
 print('input shapes:', X.shape, T.shape) # T is indicator matrix
 
 # write this class imbalance adjuster as a more generic function that I
-# can plug and play more easily in other projects 
+# can plug and play more easily in other projects
 
 # get class label version of T
 Tlabels = np.argmax(T, axis=1)

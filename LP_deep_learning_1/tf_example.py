@@ -16,6 +16,10 @@ X = np.vstack([X1, X2, X3])
 Tlabel = np.array([0]*Nclass + [1]*Nclass + [2]*Nclass)
 N = len(Tlabel)
 
+# take a look
+# plt.scatter(X[:,0], X[:,1], c=Tlabel, alpha=.5)
+# plt.show()
+
 T = np.zeros((N, K))
 T[np.arange(N), Tlabel.astype(np.int32)] = 1
 
