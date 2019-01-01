@@ -13,3 +13,6 @@ LP_logistic_regression/facial_recognition/fer2013\.csv
 practice/minuteData\.json
 
 practice/raceData\.json
+
+LP_deep_learning_2/digit_train.csv
+LP_deep_learning_2/digit_test.csv
