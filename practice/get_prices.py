@@ -28,13 +28,14 @@ async def makeRequests(endpoints, headers):
 
 def buildRequests():
     # build endpoints
-    lastTime = int(time.time() - 60*4) # unix epoch time, -three minutes
-    betTime = [int(lastTime - i*(60*2000)) for i in range(5)]
+    # get it on the minute to facilitate database storage
+    lastTime = int(time.time() - 60*4 - time.time() % 60) # unix epoch time
+    toTime = [int(lastTime - i*(60*2000)) for i in range(5)]
     # 2000 is max number of minutes at a time, get more by repeating with different #&toTs=
     endpoints = ["https://min-api.cryptocompare.com/data/histominute?fsym=%s&tsym=USD&limit=2000&toTs=%d" % (
-        s, t) for s in tickers for t in betTime]
+        s, t) for s in tickers for t in toTime]
     headers = {'authorization': 'e35795772b742f4c32495080678cdab098817bcab591b2f44d0aae61c2d32ef3'}
-    return endpoints, headers
+    return endpoints, headers, lastTime
 
 def sortData(minData, batches):
     # first bring all of the time blocks for each coin together
@@ -83,11 +84,11 @@ def createSamples(X):
 
 # do everything and return X and target labels
 def getPrices():
-    endpoints, headers = buildRequests()
+    endpoints, headers, _ = buildRequests()
     loop = asyncio.get_event_loop()
     minData = loop.run_until_complete(makeRequests(endpoints, headers))
 
-    _, Xnorm = sortData(minData, 5)
+    X, Xnorm = sortData(minData, 5)
     X3d, Y = createSamples(Xnorm)
 
     return X3d, Y
@@ -107,6 +108,18 @@ def getRacePrices(raceStart):
     _, Xnorm = sortData(minData, 1)
     X3d = np.concatenate([[Xnorm, Xnorm]], axis=2)
     return X3d
+
+# do everything and return X and target labels
+def pricesForDB():
+    # get minute data from crypto-compare
+    endpoints, headers, lastTime = buildRequests()
+    loop = asyncio.get_event_loop()
+    minData = loop.run_until_complete(makeRequests(endpoints, headers))
+
+    X, _ = sortData(minData, 5)
+    firstTime = int(lastTime - 60*(X.shape[0]-1))
+    timestamps = np.arange(firstTime, lastTime+60, 60)
+    return X, timestamps, tickers, metricKeys
 
 if __name__ == '__main__':
     endpoints, headers = buildRequests()
