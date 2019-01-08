@@ -3,7 +3,7 @@ import sqlite3 as sql
 from get_prices import getPrices
 
 # connect to sql database
-db = sql.connect('cryptoData.db')
+db = sql.connect('cryptoData2.db')
 cursor = db.cursor()
 
 # create tables for market data
