@@ -18,3 +18,5 @@ LP_deep_learning_2/digit_train.csv
 LP_deep_learning_2/digit_test.csv
 
 practice/cryptoData\.db
+
+*.pyc
