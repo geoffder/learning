@@ -22,12 +22,6 @@ def main():
     M = 300 # hidden units
     K = 10 # output classes
 
-    # initialize weights
-    W1 = np.random.randn(D, M) / np.sqrt(D)
-    b1 = np.zeros(M)
-    W2 = np.random.randn(M, K) / np.sqrt(K)
-    b2 = np.zeros(K)
-
     # # 1. constant learning rate
     # LL_batch = []
     # CR_batch = []
