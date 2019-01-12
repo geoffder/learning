@@ -1,27 +1,26 @@
 import numpy as np
 import matplotlib.pyplot as plt
-from sklearn.utils import shuffle
 
 from LP_util import get_normalized_data, error_rate, cost, y2indicator
 from LP_mlp import forward, derivative_w2, derivative_w1
 from LP_mlp import derivative_b2, derivative_b1
+
 
 def main():
     max_iter = 20
     print_period = 10
 
     Xtrain, Xtest, Ttrain, Ttest = get_normalized_data()
-    lr = .00004
     reg = .01
 
-    Ttrain, Ttest  = y2indicator(Ttrain), y2indicator(Ttest)
+    Ttrain, Ttest = y2indicator(Ttrain), y2indicator(Ttest)
 
     N, D = Xtrain.shape
     batch_sz = 500
     n_batches = N // batch_sz
 
-    M = 300 # hidden units
-    K = 10 # output classes
+    M = 300  # hidden units
+    K = 10  # output classes
 
     # use the same initial weights for adam and RMSprop+momentum
     W1_0 = np.random.randn(D, M) / np.sqrt(D)
@@ -30,8 +29,8 @@ def main():
     b2_0 = np.zeros(K)
 
     # intial learning rate and decay
-    lr0 = .001 # don't go too high, or NaNs will result
-    beta1 = .9 # decay constants for first and second moment
+    lr0 = .001  # don't go too high, or NaNs will result
+    beta1 = .9  # decay constants for first and second moment
     beta2 = .999
     eps = 1e-8
 
@@ -55,7 +54,7 @@ def main():
 
     loss_adam = []
     err_adam = []
-    t = 1 # by convention. Otherwise, first correction is 0 (div by 0)
+    t = 1  # by convention. Otherwise, first correction is 0 (div by 0)
     for i in range(max_iter):
         for j in range(n_batches):
             Xbatch = Xtrain[j*batch_sz:(j*batch_sz+batch_sz)]
@@ -117,7 +116,7 @@ def main():
     W2 = W2_0.copy()
     b2 = b2_0.copy()
 
-    cache_W1 = 1 # updates more comparable with adam
+    cache_W1 = 1  # updates more comparable with adam
     cache_b1 = 1
     cache_W2 = 1
     cache_b2 = 1
@@ -176,11 +175,12 @@ def main():
 
     Y, _ = forward(Xtest, W1, b1, W2, b2)
     print('final error rate (RMSprop+mom):',
-        error_rate(Y, np.argmax(Ttest, axis=1)))
+          error_rate(Y, np.argmax(Ttest, axis=1)))
 
     plt.plot(loss_adam, label='adam')
     plt.plot(loss_rmsmom, label='RMSprop+momentum')
     plt.legend()
     plt.show()
+
 
 main()
