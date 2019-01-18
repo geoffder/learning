@@ -1,4 +1,5 @@
-# For the class Data Science: Practical Deep Learning Concepts in Theano and TensorFlow
+# For the class Data Science:
+#               Practical Deep Learning Concepts in Theano and TensorFlow
 # https://deeplearningcourses.com/c/data-science-deep-learning-in-theano-tensorflow
 # https://www.udemy.com/data-science-deep-learning-in-theano-tensorflow
 from __future__ import print_function, division
@@ -75,8 +76,9 @@ class ANN(object):
         thY = T.ivector('Y')
         p_y_given_x = self.forward(thX)
 
-        rcost = reg*T.mean([(p*p).sum() for p in self.params])
-        cost = -T.mean(T.log(p_y_given_x[T.arange(thY.shape[0]), thY]))  # + rcost
+        # rcost = reg*T.mean([(p*p).sum() for p in self.params])
+        # he had + rcost commented out from end of cost
+        cost = -T.mean(T.log(p_y_given_x[T.arange(thY.shape[0]), thY]))
         prediction = T.argmax(p_y_given_x, axis=1)
         grads = T.grad(cost, self.params)
 

@@ -1,5 +1,6 @@
 # Some utility functions we need for the class.
-# For the class Data Science: Practical Deep Learning Concepts in Theano and TensorFlow
+# For the class Data Science:
+#               Practical Deep Learning Concepts in Theano and TensorFlow
 # https://deeplearningcourses.com/c/data-science-deep-learning-in-theano-tensorflow
 # https://www.udemy.com/data-science-deep-learning-in-theano-tensorflow
 
@@ -9,12 +10,13 @@
 # on to do list to make one of these myself with common data science tasks
 # (normalizing, train/test set formation, class imbalance correction, etc)
 
-import os
+# import os
 import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
 from sklearn.decomposition import PCA
-from sklearn.linear_model import LogisticRegression
+# from sklearn.linear_model import LogisticRegression
+
 
 def get_clouds():
     Nclass = 500
@@ -31,9 +33,9 @@ def get_clouds():
 
 def get_spiral():
     # Idea: radius -> low...high
-    #           (don't start at 0, otherwise points will be "mushed" at origin)
-    #       angle = low...high proportional to radius
-    #               [0, 2pi/6, 4pi/6, ..., 10pi/6] --> [pi/2, pi/3 + pi/2, ..., ]
+    #       (don't start at 0, otherwise points will be "mushed" at origin)
+    #    angle = low...high proportional to radius
+    #            [0, 2pi/6, 4pi/6, ..., 10pi/6] --> [pi/2, pi/3 + pi/2, ..., ]
     # x = rcos(theta), y = rsin(theta) as usual
 
     radius = np.linspace(1, 10, 100)
@@ -53,8 +55,8 @@ def get_spiral():
 
     # inputs
     X = np.empty((600, 2))
-    X[:,0] = x1.flatten()
-    X[:,1] = x2.flatten()
+    X[:, 0] = x1.flatten()
+    X[:, 1] = x2.flatten()
 
     # add noise
     X += np.random.randn(600, 2)*0.5
@@ -62,7 +64,6 @@ def get_spiral():
     # targets
     Y = np.array([0]*100 + [1]*100 + [0]*100 + [1]*100 + [0]*100 + [1]*100)
     return X, Y
-
 
 
 def get_transformed_data():
@@ -77,18 +78,18 @@ def get_transformed_data():
 
     Xtrain = X[:-1000]
     Ytrain = Y[:-1000]
-    Xtest  = X[-1000:]
-    Ytest  = Y[-1000:]
+    Xtest = X[-1000:]
+    Ytest = Y[-1000:]
 
     # center the data
     mu = Xtrain.mean(axis=0)
     Xtrain = Xtrain - mu
-    Xtest  = Xtest - mu
+    Xtest = Xtest - mu
 
     # transform the data
     pca = PCA()
     Ztrain = pca.fit_transform(Xtrain)
-    Ztest  = pca.transform(Xtest)
+    Ztest = pca.transform(Xtest)
 
     plot_cumulative_variance(pca)
 
@@ -116,8 +117,8 @@ def get_normalized_data():
 
     Xtrain = X[:-1000]
     Ytrain = Y[:-1000]
-    Xtest  = X[-1000:]
-    Ytest  = Y[-1000:]
+    Xtest = X[-1000:]
+    Ytest = Y[-1000:]
 
     # normalize the data
     mu = Xtrain.mean(axis=0)
@@ -185,7 +186,6 @@ def benchmark_full():
 
     print("Performing logistic regression...")
     # lr = LogisticRegression(solver='lbfgs')
-
 
     # convert Ytrain and Ytest to (N x K) matrices of indicator variables
     N, D = Xtrain.shape

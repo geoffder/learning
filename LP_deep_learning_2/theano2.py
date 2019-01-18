@@ -4,8 +4,10 @@ import numpy as np
 import matplotlib.pyplot as plt
 from LP_util import get_normalized_data, y2indicator
 
+
 def error_rate(p, t):
     return np.mean(p != t)
+
 
 def main():
     Xtrain, Xtest, Ttrain, Ttest = get_normalized_data()
