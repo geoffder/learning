@@ -14,14 +14,13 @@ cursor.execute('SELECT MAX(timestamp) from BTC_minutes')
 freshestStamp = cursor.fetchall()[0][0]
 
 newStamps = np.argwhere(timestamps > freshestStamp).flatten()
-print(timestamps.shape, X.shape, newStamps.shape)
-timestamps, X = timestamps[newStamps], X[newStamps,:]
-print(newStamps.shape)
-print(timestamps.shape, X.shape)
+print('number of new minutes:', newStamps.shape)
+timestamps, X = timestamps[newStamps], X[newStamps, :]
 for c, coin in enumerate(tickers, start=0):
     table = coin + '_minutes'
     for i in range(X.shape[0]):
-        row = np.concatenate(([timestamps[i]],X[i, numMetrics*c:numMetrics*c+numMetrics]))
+        row = np.concatenate(([timestamps[i]],
+                             X[i, numMetrics*c:numMetrics*c+numMetrics]))
         cursor.execute(
             'INSERT INTO ' + table + ' VALUES (?, ?, ?, ?, ?, ?, ?)', row)
 db.commit()
