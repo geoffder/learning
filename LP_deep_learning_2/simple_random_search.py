@@ -18,7 +18,7 @@ def random_search():
     M = 20
     nHidden = 2
     log_lr = -4  # np.random.uniform(-8, -2)  # lr = 10**log_lr
-    log_l2 = -2  
+    log_l2 = -2
 
     # loop through all possible hyperparam settings
     best_validation_rate = 0
