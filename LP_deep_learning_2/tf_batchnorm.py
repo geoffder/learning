@@ -46,6 +46,8 @@ class HiddenLayer(object):
                 tf.add(tf.multiply(self.running_var, self.decay),
                        tf.multiply(batch_var, 1 - self.decay))
             )
+            # ensures these update functions and all that they depend, which
+            # includes batch_mean and batch_var before the following code block
             with tf.control_dependencies([update_rn_mean, update_rn_var]):
                 a_norm = tf.nn.batch_normalization(
                     a, batch_mean, batch_var,
