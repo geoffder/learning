@@ -1,12 +1,11 @@
 import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
-import seaborn as sns # don't need but maybe use to get familiar with API
 
 from sklearn.utils import shuffle
 
 df = pd.read_csv('fer2013.csv')
-#print(df.columns.values) # ['emotion' 'pixels' 'Usage']
+# print(df.columns.values) # ['emotion' 'pixels' 'Usage']
 # emotions = []
 # for ele in df['emotion'].values:
 #     if not ele in emotions:
@@ -22,22 +21,24 @@ df = pd.read_csv('fer2013.csv')
 # pixels: string object of ints seperated by spaces
 # Usage: ['Training, 'PublicTest', 'PrivateTest']
 
-#steps
+# steps
 # emotions are the classes, 7 of them. Only work on 0 and 1, so it is binary
-# there are way more 0s than 1s though, need to build the dataset so that n for each is equal
-# can do this by repeating the data of the under-represented class (better than sub-sampling, more data)
-# break the pixels string up, and make each pixel a feature. normalize the values
-# don't really care about the Usage I don't think. I'll just shuffle to make my train and test sets
+# there are way more 0s than 1s though, need to build the dataset,
+# so that n for each is equal can do this by repeating the data of the
+# under-represented class (better than sub-sampling, more data) break the
+# pixels string up, and make each pixel a feature. normalize the values
+# don't really care about the Usage I don't think.
+# I'll just shuffle to make my train and test sets
 
 # how many of each class do I have in this set?
 emotions = df['emotion'].values
-T_0 = emotions[emotions == 0] # create set for class 0
-T_1 = emotions[emotions == 1] # create set for class 1
+T_0 = emotions[emotions == 0]  # create set for class 0
+T_1 = emotions[emotions == 1]  # create set for class 1
 # print('samples in class 0', T_0.shape[0])
 # print('samples in class 1', T_1.shape[0])
 
 pixels = df['pixels'].values
-pixels_0 = pixels[emotions == 0] # split pixels up in same way as emotions
+pixels_0 = pixels[emotions == 0]  # split pixels up in same way as emotions
 pixels_1 = pixels[emotions == 1]
 pix_0 = []
 pix_1 = []
@@ -62,33 +63,38 @@ N, D = X.shape
 # normalize X values
 X = (X - X.mean())/X.std()
 # add bias term
-ones = np.ones((N,1))
+ones = np.ones((N, 1))
 Xb = np.concatenate((X, ones), axis=1)
+
 
 def sigmoid(z):
     return 1 / (1 + np.exp(-z))
 
+
 def costDeriv(X, Y, T):
     return X.T @ (Y - T)
-    #return X.T @ (T - Y) # trying adding weights up
+    # return X.T @ (T - Y) # trying adding weights up
+
 
 def crossEntropy(Y, T):
     return -(T * np.log(Y) + (1 - T)*np.log(1 - Y)).mean()
 
+
 def prediction_rate(P, T):
     return (T == P).mean()
+
 
 # train and test sets
 Xb, T = shuffle(Xb, T)
 N_train = int(Xb.shape[0] * .8)
-X_train = Xb[:N_train-1,:]
+X_train = Xb[:N_train-1, :]
 T_train = T[:N_train-1]
-X_test = Xb[N_train:,:]
+X_test = Xb[N_train:, :]
 T_test = T[N_train:]
 
 w = np.random.randn(D+1) / np.sqrt(D+1)
 learning_rate = .000001
-l2 = 2 # l2 regularlization constant
+l2 = 2  # l2 regularlization constant
 
 train_costs = []
 test_costs = []
@@ -97,7 +103,7 @@ for i in range(3000):
     Y_test = sigmoid(X_test @ w)
     train_costs.append(crossEntropy(Y_train, T_train))
     test_costs.append(crossEntropy(Y_test, T_test))
-    #w += learning_rate * (costDeriv(X_train, Y_train, T_train) - l2 * w)
+    # w += learning_rate * (costDeriv(X_train, Y_train, T_train) - l2 * w)
     w -= learning_rate * (costDeriv(X_train, Y_train, T_train) + l2 * w)
 
 # final probabilities, cost and prediction
