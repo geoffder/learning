@@ -270,9 +270,10 @@ def main():
     #                                                             ratio=.8)
     # Ttrain, Ttest = labelEncode(Ttrain_labels), labelEncode(Ttest_labels)
     Xtrain, Ttrain, Xtest, Ttest = trainTestSplit(X, T, ratio=.8)
-    ann = ANN([1000, 1000, 500, 500, 300], [0.8, 0.5, 0.5, .5, .5, .5])
+    ann = ANN([1000, 1000, 500, 500, 300, 100],
+              [0.8, 0.5, 0.5, .5, .5, .5, .5])
     # ann = ANN([500, 500, 300, 100, 100], [0.8, 0.5, 0.5, .5, .5, .5])
-    ann.fit(Xtrain, Ttrain, Xtest, Ttest, lr=1e-4, epochs=100)
+    ann.fit(Xtrain, Ttrain, Xtest, Ttest, lr=1e-3, epochs=100)
 
 
 if __name__ == '__main__':
