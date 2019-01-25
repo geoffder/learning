@@ -7,6 +7,7 @@ import torch
 from torch.autograd import Variable
 from torch import optim
 
+# use GPU if available.
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 torch.backends.cudnn.benchmark = True
 
@@ -17,8 +18,8 @@ class ANN(object):
         self.hidden_layer_sizes = hidden_layer_sizes
         self.dropout_rates = p_drop
 
-    def fit(self, Xtrain, Ttrain, Xtest, Ttest, lr=1e-4,
-            epochs=40, batch_sz=200, print_every=50):
+    def fit(self, Xtrain, Ttrain, Xtest, Ttest, lr=1e-4, batch_mu=.1,
+            epsilon=1e-4, epochs=40, batch_sz=200, print_every=50):
 
             N, D = Xtrain.shape
             K = np.unique(Ttrain).shape[0]
@@ -31,27 +32,45 @@ class ANN(object):
             self.model = torch.nn.Sequential()
             M1 = D  # first input layer is the number of features in X
             for i, M2 in enumerate(self.hidden_layer_sizes):
-                self.model.add_module("dropout"+str(i+1),
-                                      torch.nn.Dropout(
-                                        p=self.dropout_rates[i]))
-                self.model.add_module("dense"+str(i+1),
-                                      torch.nn.Linear(M1, M2))
-                self.model.add_module("relu"+str(i+1), torch.nn.ReLU())
+                self.model.add_module(
+                    "dropout"+str(i+1),
+                    torch.nn.Dropout(p=self.dropout_rates[i])
+                )
+                self.model.add_module(
+                    "dense"+str(i+1),
+                    torch.nn.Linear(M1, M2)
+                )
+                self.model.add_module(
+                    "batchnorm"+str(i+1),
+                    torch.nn.BatchNorm1d(
+                        M2, eps=epsilon, momentum=batch_mu, affine=True,
+                        track_running_stats=True
+                    )
+                )
+                self.model.add_module(
+                    "relu"+str(i+1),
+                    torch.nn.ReLU()
+                )
                 M1 = M2  # input layer to next layer is this layer
             # output layer (no activation)
-            self.model.add_module("dropoutOut",
-                                  torch.nn.Dropout(p=self.dropout_rates[-1]))
-            self.model.add_module("denseOut", torch.nn.Linear(M1, K))
+            self.model.add_module(
+                "dropoutOut",
+                torch.nn.Dropout(p=self.dropout_rates[-1])
+            )
+            self.model.add_module(
+                "denseOut",
+                torch.nn.Linear(M1, K)
+            )
 
             self.model.to(device)
 
             self.loss = torch.nn.CrossEntropyLoss(size_average=True)
-            self.optimizer = optim.Adam(self.model.parameters(), lr=1e-4)
+            self.optimizer = optim.Adam(self.model.parameters(), lr=lr)
 
             n_batches = N // batch_sz
             train_costs, train_accs, test_costs, test_accs = [], [], [], []
             for i in range(epochs):
-                cost, test_cost = 0, 0
+                cost = 0
                 print("epoch:", i, "n_batches:", n_batches)
                 inds = torch.randperm(Xtrain.size()[0])
                 Xtrain, Ttrain = Xtrain[inds], Ttrain[inds]
@@ -84,7 +103,7 @@ class ANN(object):
 
     def train(self, inputs, labels):
         # set the model to training mode
-        # because dropout has 2 different modes!
+        # dropout and batch norm behave differently in train vs eval modes
         self.model.train()
 
         inputs = Variable(inputs, requires_grad=False)
@@ -105,7 +124,7 @@ class ANN(object):
     # similar to train() but not doing the backprop step
     def get_cost(self, inputs, labels):
         # set the model to testing mode
-        # because dropout has 2 different modes!
+        # dropout and batch norm behave differently in train vs eval modes
         self.model.eval()
 
         inputs = Variable(inputs, requires_grad=False)
@@ -120,7 +139,7 @@ class ANN(object):
     # Note: inputs is a torch tensor
     def predict(self, inputs):
         # set the model to testing mode
-        # because dropout has 2 different modes!
+        # dropout and batch norm behave differently in train vs eval modes
         self.model.eval()
 
         inputs = Variable(inputs, requires_grad=False)
@@ -149,6 +168,10 @@ def classRebalance(X, T):
 
 
 def trainTestSplit(X, T, ratio=.5):
+    '''
+    Shuffle dataset and split into training and validation sets given a
+    train:test ratio.
+    '''
     X, T = shuffle(X, T)
     N = X.shape[0]
     Xtrain, Ttrain = X[:int(N*ratio)], T[:int(N*ratio)]
@@ -172,8 +195,9 @@ def main():
     print('emotion counts:', [(T == k).sum() for k in np.unique(T)])
 
     Xtrain, Ttrain, Xtest, Ttest = trainTestSplit(X, T, ratio=.8)
-    ann = ANN([1000, 1000, 500, 500, 300], [0.8, 0.5, 0.5, .5, .5, .5])
-    ann.fit(Xtrain, Ttrain, Xtest, Ttest, lr=1e-4, epochs=100)
+    ann = ANN([1000, 1000, 500, 500, 300, 100],
+              [0.2, 0.5, 0.5, .5, .5, .5, .5])
+    ann.fit(Xtrain, Ttrain, Xtest, Ttest, lr=1e-3, epochs=100)
 
 
 if __name__ == '__main__':
