@@ -158,11 +158,11 @@ for i in range(epochs):
 
         print("Epoch: %d, cost: %f, acc: %.2f" % (i, test_cost, test_acc))
 
-        # for plotting
-        train_costs.append(cost / n_batches)
-        train_accuracies.append(train_acc)
-        test_costs.append(test_cost)
-        test_accuracies.append(test_acc)
+    # for plotting
+    train_costs.append(cost / n_batches)
+    train_accuracies.append(train_acc)
+    test_costs.append(test_cost)
+    test_accuracies.append(test_acc)
 
 
 # plot the results
