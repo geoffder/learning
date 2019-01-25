@@ -6,6 +6,9 @@ import torch
 from torch.autograd import Variable
 from torch import optim
 
+# device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
+device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+
 # get the data, same as Theano + Tensorflow examples
 # no need to split now, the fit() function will do it
 Xtrain, Xtest, Ytrain, Ytest = get_normalized_data()
@@ -16,7 +19,10 @@ K = len(set(Ytrain))
 
 # Note: no need to convert Y to indicator matrix
 
+
 # the model will be a sequence of layers
+# torch.cuda.set_device(0)
+torch.backends.cudnn.benchmark = True
 model = torch.nn.Sequential()
 # ANN with layers [784] -> [500] -> [300] -> [10]
 # NOTE: the "p" is p_drop, not p_keep
@@ -30,6 +36,7 @@ model.add_module("dropout3", torch.nn.Dropout(p=0.5))
 model.add_module("dense3", torch.nn.Linear(300, K))
 # Note: no final softmax!
 # just like Tensorflow, it's included in cross-entropy function
+model.to(device)
 
 # define a loss function
 # other loss functions can be found here:
@@ -117,10 +124,10 @@ def score(model, inputs, labels):
 # prepare for training loop ###
 
 # convert the data arrays into torch tensors
-Xtrain = torch.from_numpy(Xtrain).float()
-Ytrain = torch.from_numpy(Ytrain).long()
-Xtest = torch.from_numpy(Xtest).float()
-Ytest = torch.from_numpy(Ytest).long()
+Xtrain = torch.from_numpy(Xtrain).float().to(device)
+Ytrain = torch.from_numpy(Ytrain).long().to(device)
+Xtest = torch.from_numpy(Xtest).float().to(device)
+Ytest = torch.from_numpy(Ytest).long().to(device)
 
 # training parameters
 epochs = 15
