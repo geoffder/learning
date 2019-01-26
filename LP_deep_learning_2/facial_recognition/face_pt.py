@@ -179,22 +179,32 @@ def trainTestSplit(X, T, ratio=.5):
     return Xtrain, Ttrain, Xtest, Ttest
 
 
-def main():
+def loadAndProcess(pca=True):
     print('loading in data...')
-    df = pd.read_csv('fer2013.csv')
+    if pca:
+        X = pd.read_csv('pixels_300compPCA.csv').values
+        T = pd.read_csv('emotion.csv').values.flatten()
+    else:
+        df = pd.read_csv('fer2013.csv')
+        print('samples in full dataset:', df['emotion'].values.size)
+        maxN = 20000
+        print('taking %d samples' % maxN)
+        X = np.array(
+            [str.split(' ') for str in df['pixels'].values[:maxN]]
+        ).astype(np.uint8)
+        T = df['emotion'].values[:maxN]
     print('data loaded.')
-    print('samples in full dataset:', df['emotion'].values.size)
-    maxN = 20000  # number of samples to use from dataset (crashes memory)
 
-    pixels = np.array(
-        [str.split(' ') for str in df['pixels'].values[:maxN]]
-    ).astype(np.uint8)
-
-    X, T = classRebalance(pixels, df['emotion'].values[:maxN])
+    X, T = classRebalance(X, T)
     print('X shape:', X.shape, 'T shape:', T.shape)
     print('emotion counts:', [(T == k).sum() for k in np.unique(T)])
+    return X, T
 
+
+def main():
+    X, T = loadAndProcess(pca=True)
     Xtrain, Ttrain, Xtest, Ttest = trainTestSplit(X, T, ratio=.8)
+
     ann = ANN([1000, 1000, 500, 500, 300, 100],
               [0.2, 0.5, 0.5, .5, .5, .5, .5])
     ann.fit(Xtrain, Ttrain, Xtest, Ttest, lr=1e-3, epochs=100)

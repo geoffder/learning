@@ -26,3 +26,7 @@ LP_deep_learning_2/facial_recognition/fer2013\.bib
 LP_deep_learning_2/facial_recognition/fer2013\.csv
 
 LP_deep_learning_2/facial_recognition/example_submission\.csv
+
+LP_deep_learning_2/facial_recognition/emotion\.csv
+
+LP_deep_learning_2/facial_recognition/pixels_300compPCA\.csv
