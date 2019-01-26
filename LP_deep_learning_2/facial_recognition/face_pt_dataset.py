@@ -13,6 +13,14 @@ from torch import optim
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 torch.backends.cudnn.benchmark = True
 
+'''
+This script experiements with using the Dataset and Dataloader classes from
+torch.utils.data. This data set of a single csv is not really suited for it,
+and it just slows things down, but I got it working at least. Proper use of
+dataset/dataloader involve reading the data as needed from file/disk into
+memory (for datasets that are too large to hold in memory at once).
+'''
+
 
 class ANN(object):
 
@@ -176,6 +184,14 @@ class FaceRecog(Dataset):
     '''Kaggle Facial Recognition Dataset'''
 
     def __init__(self, df):
+        '''
+        Normally would take just labels, a path, and a list of filenames.
+        The files are then what is pointed to by idx in __getitem__. So the
+        dataloader loads a batch of FILES, which are then processed and
+        returned for use in whatever algorithm. Having parallelization across
+        multiple workers with the dataloader allows the loading of batches of
+        files to go much faster.
+        '''
         self.df = df
         self.K = pd.unique(df['emotion']).size
         self.D = len(df['face'][0].split(' '))
@@ -192,6 +208,7 @@ class FaceRecog(Dataset):
         emotion = torch.from_numpy(np.array(self.emotions[idx])).to(device)
         # formatting each one before is much slower than doing it all at once
         # repeating the same processing over and over again.
+        # But this is more similar to the actual use case.
         # face = torch.from_numpy(
         #     np.array(self.df['face'][idx].split(' ')).astype(np.uint8)
         # ).float().to(device)
