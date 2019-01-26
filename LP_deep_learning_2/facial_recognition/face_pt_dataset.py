@@ -204,6 +204,10 @@ class FaceRecog(Dataset):
         return len(self.df)
 
     def __getitem__(self, idx):
+        '''
+        try setting this up to use loading lines from the csv using the
+        skiprows and nrows arguments of pandas.read_csv.
+        '''
         face = torch.from_numpy(self.faces[idx]).float().to(device)
         emotion = torch.from_numpy(np.array(self.emotions[idx])).to(device)
         # formatting each one before is much slower than doing it all at once
