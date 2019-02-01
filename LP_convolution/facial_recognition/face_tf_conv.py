@@ -93,6 +93,7 @@ class CNN(object):
     dropout regularization of each layer.
     '''
     def __init__(self, conv_layer_shapes, hidden_layer_sizes, p_keep):
+        # width, height, in, out
         self.conv_layer_shapes = conv_layer_shapes
         self.hidden_layer_sizes = hidden_layer_sizes
         self.dropout_rates = p_keep
