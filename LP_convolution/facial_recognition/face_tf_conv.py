@@ -5,6 +5,34 @@ import tensorflow as tf
 from sklearn.utils import shuffle
 
 
+class ConvPoolLayer(object):
+    '''
+    Generate a new convolution and maxpool layer.
+    '''
+    def __init__(self, filtW, filtH, fmapsIn, fmapsOut, pool_sz=2):
+        'Initialize filters'
+        self.shape = (filtW, filtH, fmapsIn, fmapsOut)
+        self.pool_sz = pool_sz
+        '''
+        NOTE: the * in *self.shape unpacks the tuple, since np.random.randn
+        takes dimensions as seperate integer arguments, not a tuple like zeros.
+        '''
+        W = np.random.randn(
+                    *self.shape) * np.sqrt(2.0 / np.prod(self.shape[:-1]))
+        self.W = tf.Variable(W.astype(np.float32))
+        b = np.zeros(fmapsOut, dtype=np.float32)
+        self.b = tf.Variable(b)
+        self.params = [self.W, self.b]
+
+    def forward(self, X):
+        'Apply convolutions and max pooling'
+        conv_out = tf.nn.conv2d(X, self.W, [1, 1, 1, 1], 'SAME')
+        conv_out = tf.nn.bias_add(conv_out, self.b)
+        p = self.pool_sz
+        pool_out = tf.nn.max_pool(conv_out, [1, p, p, 1], [1, p, p, 1], 'SAME')
+        return pool_out
+
+
 class HiddenLayer(object):
     '''
     Generate new hidden layer with input size and number of nodes as args.
@@ -58,17 +86,19 @@ class HiddenLayer(object):
         return tf.nn.relu(a_norm)
 
 
-class ANN(object):
+class CNN(object):
     '''
-    Generate new neural network, taking hidden layer sizes as a list, and
-    dropout rate as p_keep
+    Generate convolution new neural network, convolution layers as shapes,
+    and sizes of fully connected dense layers with corresponding pkeeps for
+    dropout regularization of each layer.
     '''
-    def __init__(self, hidden_layer_sizes, p_keep):
+    def __init__(self, conv_layer_shapes, hidden_layer_sizes, p_keep):
+        self.conv_layer_shapes = conv_layer_shapes
         self.hidden_layer_sizes = hidden_layer_sizes
         self.dropout_rates = p_keep
 
-    def fit(self, X, T, Xvalid, Tvalid, lr=1e-4, mu=0.9, decay=0.9, epochs=40,
-            batch_sz=200, print_every=50):
+    def fit(self, X, T, Xvalid, Tvalid, lr=1e-4, reg=1e-3, mu=0.99,
+            decay=0.99999, epochs=40, batch_sz=200, print_every=50):
         '''
         Takes training data and test data (valid) at once, then trains and
         validates along the way. Modifying hyperparams of learning_rate, mu,
@@ -80,8 +110,19 @@ class ANN(object):
         Xvalid = Xvalid.astype(np.float32)
         Tvalid = Tvalid.astype(np.int64)
 
+        N = X.shape[0]
+        # initialize conv layers
+        self.conv_layers = []
+        for shape in self.conv_layer_shapes:
+            c = ConvPoolLayer(shape[0], shape[1], shape[2], shape[3])
+            self.conv_layers.append(c)
+
         # initialize hidden layers
-        N, D = X.shape
+        # calculate input features to dense layers from last conv layer
+        width, height = X.shape[1], X.shape[2]
+        _, _, _, num_fmaps = self.conv_layer_shapes[-1]
+        pool_redux = np.prod([c.pool_sz for c in self.conv_layers])
+        D = width//pool_redux * height//pool_redux * num_fmaps
         K = np.unique(T).shape[0]
         self.hidden_layers = []
         M1 = D  # first input layer is the number of features in X
@@ -95,49 +136,46 @@ class ANN(object):
 
         # collect params for later use, output weights are first here.
         self.params = [self.W]
+        for c in self.conv_layers:
+            self.params += c.params
         for h in self.hidden_layers:
             self.params += h.params
 
         # set up theano functions and variables
-        inputs = tf.placeholder(tf.float32, shape=(None, D), name='inputs')
+        inputs = tf.placeholder(tf.float32, shape=(None, 48, 48, 1),
+                                name='inputs')
         labels = tf.placeholder(tf.int64, shape=(None,), name='labels')
-        logits = self.forward_dropout(inputs, True)
+        logits = self.forward(inputs, True)
 
         # softmax done within the cost function, not at the end of forward
-
+        # rcost = reg*sum([tf.nn.l2_loss(p) for p in self.params])
         cost = tf.reduce_mean(
             tf.nn.sparse_softmax_cross_entropy_with_logits(
                 logits=logits,
                 labels=labels
             )
-        )
-        '''
-        Unlike theano, the train_op function is not fed all of the
-        variable-function pairs for updating each of the weights (and caches,
-        momentum terms etc). Simply use a training function with the objective
-        specified (e.g. .minimize(cost)). The feed_dict that will be provided
-        to train_op are the inputs to cost (X:inputs and Y:lables))
-        '''
-        # train_op = tf.train.RMSPropOptimizer(lr, decay=decay,
-        #                                      momentum=mu).minimize(cost)
+        )  # + rcost  # add regularization
+
+        train_op = tf.train.RMSPropOptimizer(lr, decay=decay,
+                                             momentum=mu).minimize(cost)
         # train_op = tf.train.MomentumOptimizer(lr, momentum=mu).minimize(cost)
-        train_op = tf.train.AdamOptimizer(lr).minimize(cost)
+        # train_op = tf.train.AdamOptimizer(lr).minimize(cost)
 
         '''
         Setting up the last tensor equation placeholders to build the graphs
         that will be used for computation. No values, training loop is next!
         '''
-        prediction = self.predict(inputs)  # returns labels
+        prediction = self.predict_dropout(inputs)  # returns labels
 
         # validation cost will be calculated separately,
         # since nothing will be dropped
-        test_logits = self.forward_test_dropout(inputs, False)
+        test_logits = self.forward_dropout(inputs, False)
         test_cost = tf.reduce_mean(
             tf.nn.sparse_softmax_cross_entropy_with_logits(
                 logits=test_logits,
                 labels=labels
             )
-        )
+        )  # + rcost
 
         # create a session and initialize the variables within it
         init = tf.global_variables_initializer()
@@ -170,45 +208,40 @@ class ANN(object):
 
     def forward(self, X, is_training):
         Z = X
+        for c in self.conv_layers:
+            Z = c.forward(Z)
+        Z = self.flatten(Z)
         for h in self.hidden_layers:
             Z = h.forward(Z, is_training)
         return tf.matmul(Z, self.W)
+
+    @staticmethod
+    def flatten(Z):
+        shape = Z.get_shape().as_list()
+        batch = tf.shape(Z)[0]  # gives the variable batch length
+        return tf.reshape(Z, [batch, np.prod(shape[1:])])
 
     def predict(self, X):
         pY = self.forward(X, False)
         return tf.argmax(pY, 1)
 
     def forward_dropout(self, X, is_training):
-        # tf.nn.dropout scales inputs by 1/p_keep
-        # therefore, during test time, we don't have to scale anything
         Z = X
-        '''
-        Here is the dropout implementation. Tensorflow does the masking for us.
-
-        Inputs (X) dropout is done first, outside the loop. Then dropout is
-        performed on the outputs, before they become inputs to the next layer.
-        This is a bit different from the theano code. Haven't thought about
-        why he did this hard enough yet. I believe the outcome is the same, but
-        the theano implementation is cleaner since it is all within the loop.
-        '''
-        Z = tf.nn.dropout(Z, self.dropout_rates[0])
+        # convpool layers
+        for c in self.conv_layers:
+            Z = c.forward(Z)
+        Z = self.flatten(Z)
+        # dense layers
+        if is_training:
+            Z = tf.nn.dropout(Z, self.dropout_rates[0])
         for h, p in zip(self.hidden_layers, self.dropout_rates[1:]):
             Z = h.forward(Z, is_training)
-            Z = tf.nn.dropout(Z, p)
+            if is_training:
+                Z = tf.nn.dropout(Z, p)
         return tf.matmul(Z, self.W)  # logits of final layer.
 
-    def forward_test_dropout(self, X, is_training):
-        '''
-        Note that inputs aren't scaled here, the dropout function already
-        took care of that during training (see LP's note above).
-        '''
-        Z = X
-        for h in self.hidden_layers:
-            Z = h.forward(Z, is_training)
-        return tf.matmul(Z, self.W)
-
     def predict_dropout(self, X):
-        pY = self.forward_test_dropout(X, False)
+        pY = self.forward_dropout(X, False)
         return tf.argmax(pY, 1)
 
 
@@ -262,17 +295,19 @@ def main():
         [str.split(' ') for str in df['pixels'].values[:maxN]]
     ).astype(np.uint8)
 
-    X, T = classRebalance(pixels, df['emotion'].values[:maxN])
+    faces = np.zeros((pixels.shape[0], 48, 48, 1))  # one channel, B&W img
+    for i, img in enumerate(pixels):
+        faces[i, :, :, 0] = img.reshape(48, 48) / 255
+    X, T = classRebalance(faces, df['emotion'].values[:maxN])
     print('X shape:', X.shape, 'T shape:', T.shape)
     print('emotion counts:', [(T == k).sum() for k in np.unique(T)])
     del df, pixels  # clean-up
-    # Xtrain, Ttrain_labels, Xtest, Ttest_labels = trainTestSplit(X, T,
-    #                                                             ratio=.8)
-    # Ttrain, Ttest = labelEncode(Ttrain_labels), labelEncode(Ttest_labels)
+
     Xtrain, Ttrain, Xtest, Ttest = trainTestSplit(X, T, ratio=.8)
-    ann = ANN([1000, 1000, 500, 500, 300, 100],
-              [0.8, 0.5, 0.5, .5, .5, .5, .5])
-    # ann = ANN([500, 500, 300, 100, 100], [0.8, 0.5, 0.5, .5, .5, .5])
+    ann = CNN([[5, 5, 1, 20], [5, 5, 20, 50], [5, 5, 50, 50]],
+              [1000, 500, 300, 100],
+              [0.8, 0.5, 0.5, .5, .5])
+
     ann.fit(Xtrain, Ttrain, Xtest, Ttest, lr=1e-3, epochs=100)
 
 
