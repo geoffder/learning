@@ -21,8 +21,9 @@ class Flatten(torch.nn.Module):
         # refers to the parent class that this inherits from, so it is thus
         # torch.nn.Module.__init__. Looked it up, the clean vers below was
         # introduced in py3, the above syntax was required in py2.
+        # self is automatically passed to nn.Module.__init__, since this class
+        # inherited all of the variables/objects belonging to nn.Module.
         # super().__init__()
-
 
     def forward(self, x):
         shape = torch.prod(torch.tensor(x.shape[1:])).item()
