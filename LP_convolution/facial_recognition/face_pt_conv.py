@@ -13,6 +13,7 @@ torch.backends.cudnn.benchmark = True
 
 
 class Flatten(torch.nn.Module):
+    'Layer that flattens extra-dimensional input to create an NxD matrix'
     def __init__(self):
         super(Flatten, self).__init__()
 
@@ -45,6 +46,11 @@ class CNN(object):
             self.model = torch.nn.Sequential()
 
             for i, shape in enumerate(self.conv_layer_shapes):
+                if i:  # only one channel in original images
+                    self.model.add_module(
+                        "dropout2d"+str(i+1),
+                        torch.nn.Dropout2d()
+                    )
                 self.model.add_module(
                     "conv2d"+str(i+1),
                     torch.nn.Conv2d(
@@ -57,6 +63,14 @@ class CNN(object):
                     "maxpool"+str(i+1),
                     torch.nn.MaxPool2d(self.pool_szs[i])
                     # stride is same as kernel size by default
+                )
+                self.model.add_module(
+                    "batchnorm2d"+str(i+1),
+                    torch.nn.BatchNorm2d(shape[3])
+                )
+                self.model.add_module(
+                    "elu"+str(i+1),
+                    torch.nn.ELU()
                 )
 
             self.model.add_module(
@@ -257,7 +271,7 @@ def main():
               [2, 2, 2],
               [1000, 1000, 500, 500, 300, 100],
               [0.2, 0.5, 0.5, .5, .5, .5, .5])
-    ann.fit(Xtrain, Ttrain, Xtest, Ttest, lr=1e-3, epochs=100)
+    ann.fit(Xtrain, Ttrain, Xtest, Ttest, lr=1e-3, epochs=30)
 
 
 if __name__ == '__main__':
