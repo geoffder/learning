@@ -16,6 +16,13 @@ class Flatten(torch.nn.Module):
     'Layer that flattens extra-dimensional input to create an NxD matrix'
     def __init__(self):
         super(Flatten, self).__init__()
+        # The pytorch docs for the nn.Module class recommend initialzing as
+        # above, but the line below seems to work just fine as well. super(),
+        # refers to the parent class that this inherits from, so it is thus
+        # torch.nn.Module.__init__. Looked it up, the clean vers below was
+        # introduced in py3, the above syntax was required in py2.
+        # super().__init__()
+
 
     def forward(self, x):
         shape = torch.prod(torch.tensor(x.shape[1:])).item()
