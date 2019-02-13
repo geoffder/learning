@@ -1,5 +1,6 @@
-# import numpy as np
+import numpy as np
 import matplotlib.pyplot as plt
+from PIL import Image
 
 import nltk
 from nltk.stem import WordNetLemmatizer
@@ -93,10 +94,16 @@ def main():
             sorted_freqs.append([w, freqs[w]])
     print(sorted_freqs)
 
+    image_mask = np.array(Image.open('images\\yoga-lotus-black.png'))
+    print(image_mask.shape)
+    # plt.imshow(image_mask)
+    # plt.show()
     wordcloud = WordCloud(
-        stopwords=stopwords, width=800, height=400, colormap='jet',
-        min_font_size=8
+        stopwords=stopwords, width=800, height=400,
+        min_font_size=8, colormap='jet',
+        mask=image_mask, contour_width=3,  # contour_color='white'
     ).fit_words(freqs)
+    wordcloud.to_file('wordcloud.png')
     plt.imshow(wordcloud)
     plt.show()
 
