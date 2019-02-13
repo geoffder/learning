@@ -1,12 +1,14 @@
+# import numpy as np
+import matplotlib.pyplot as plt
+
 import nltk
 from nltk.stem import WordNetLemmatizer
 from nltk.corpus import stopwords as stop
 from wordcloud import WordCloud
-import numpy as np
-import matplotlib.pyplot as plt
 
 
 def load_stopwords(files=None):
+    'Load files of stopwords and the basic english set from nltk'
     if files is not None:
         stopwords = set()
         for file in files:
@@ -19,17 +21,21 @@ def load_stopwords(files=None):
 
 
 def my_tokenizer(s):
+    '''
+    Break input text in to a list of words, lemmatize them, and remove those
+    that will not be useful. Short words, stopwords, etc.
+    '''
     s = s.lower()  # downcase
     tokens = nltk.tokenize.word_tokenize(s)  # split string into words (tokens)
     tokens = [t for t in tokens if len(t) > 2]  # remove short words
     # put words into base form (remove plural, 'ing', 'ed', etc)
     tokens = [wordnet_lemmatizer.lemmatize(t) for t in tokens]
     tokens = [t for t in tokens if t not in stopwords]  # remove stopwords
-    # remove any digits, i.e. "3rd edition"
     tokens = [t for t in tokens if not any(c.isdigit() for c in t)]
     return tokens
 
 
+# maybe add something in here to remove lines by CCB
 def process(lines):
     word_index_map = {}
     freqs = {}
