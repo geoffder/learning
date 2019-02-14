@@ -104,8 +104,8 @@ class ANN(object):
         self.nodes = hidden_layer_sizes
         self.pre_weights = weights
 
-    def fit(self, Xtrain, Ttrain, Xtest, Ttest, lr=1e-4, batch_mu=.1,
-            epsilon=1e-4, epochs=40, batch_sz=200, print_every=50):
+    def fit(self, Xtrain, Ttrain, Xtest, Ttest, lr=1e-4, epochs=40,
+            batch_sz=200, print_every=50):
 
         N, D = Xtrain.shape
 
