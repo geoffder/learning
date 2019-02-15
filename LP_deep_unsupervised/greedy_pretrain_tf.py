@@ -53,6 +53,7 @@ class AutoEncoder(object):
                 if j % print_every == 0:
                     print("cost: %f" % (c))
 
+        # using sess.run() on these tensors returns np arrays
         return sess.run(self.get_hidden(X)), sess.run(self.W_hidden)
 
     def forward(self, X):
