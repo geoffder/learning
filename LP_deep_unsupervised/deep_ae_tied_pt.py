@@ -1,4 +1,4 @@
-# import numpy as np
+import numpy as np
 import matplotlib.pyplot as plt
 from mpl_toolkits.mplot3d import Axes3D
 
@@ -10,9 +10,12 @@ from collections import OrderedDict
 from LP_util import getKaggleMNIST
 
 '''
-This is my first try at this, and it works ok, but not as well as it could.
-I need to try an architecture like LP uses, where the transposed weights of the
-encoder layers are used for the output, rather than a seperate set of weights.
+Have not figured out where I am going wrong with this yet. When using the
+sigmoids, the values are saturating and it is just learning an average blob.
+Even when using some batch normalization the problem persists. The encoder
+network paired with decode function seems to work for a pure linear network,
+but something is happening that is preventing learning in the non-linear case.
+Try building one by creating a custom autoencoder module (inherit nn.Module).
 '''
 
 # use GPU if available.
@@ -33,10 +36,15 @@ class DeepAutoEncoder(object):
         )
 
         M1 = self.D
-        self.encoder._modules['dropout'] = torch.nn.Dropout(p=.5)
+        # self.encoder._modules['dropout'] = torch.nn.Dropout(p=.5)
         for i, M2 in enumerate(self.nodes):
             self.encoder._modules[
                 'hidden'+str(i)] = torch.nn.Linear(M1, M2)
+            # self.encoder._modules[
+            #     'hidden_bnorm'+str(i)] = torch.nn.BatchNorm1d(
+            #         M2,  # eps=epsilon, momentum=batch_mu,
+            #         affine=True, track_running_stats=True
+            #     )
             self.encoder._modules[
                 'hidden_sigmoid'+str(i)] = torch.nn.Sigmoid()
             M1 = M2
@@ -51,9 +59,13 @@ class DeepAutoEncoder(object):
 
         self.build()  # build network
 
-        self.loss = torch.nn.MSELoss()
+        # self.loss = torch.nn.MSELoss()
+        self.loss = torch.nn.BCELoss()
         params = list(self.encoder.parameters()) + list(self.decoder_biases)
         self.optimizer = optim.Adam(params, lr=lr)
+        # self.optimizer = torch.optim.RMSprop(
+        #     params, lr=lr, alpha=0.99, eps=1e-08, weight_decay=0,
+        #     momentum=0, centered=False)
 
         n_batches = self.N // batch_sz
         for i in range(epochs):
@@ -77,6 +89,13 @@ class DeepAutoEncoder(object):
                 W.transpose(0, 1),
                 bias=bias
             )
+            # if len(self.nodes)-i-2 >= 0:
+            #     running_mean = self.encoder._modules[
+            #         'hidden_bnorm'+str(len(self.nodes)-i-2)].running_mean
+            #     running_var = self.encoder._modules[
+            #         'hidden_bnorm'+str(len(self.nodes)-i-2)].running_var
+            #     output = torch.nn.functional.batch_norm(output, running_mean, running_var)
+            output = output.sigmoid()
         return output
 
     def train(self, inputs):
@@ -125,17 +144,50 @@ class DeepAutoEncoder(object):
             reduced = self.encoder.forward(inputs).cpu().numpy()
         return reduced
 
+    def reconstruct(self, X):
+        for i in range(10):
+            idx = np.random.randint(0, X.shape[0], 1)
+            sample = torch.from_numpy(X[idx]).float().to(device)
+
+            self.encoder.eval()
+
+            with torch.no_grad():
+                inputs = Variable(sample, requires_grad=False)
+
+                # self.optimizer.zero_grad()  # Reset gradient
+
+                # Forward
+                reduced = self.encoder.forward(inputs)
+                reconstruction = self.decode(reduced).cpu().numpy()
+
+            plt.imshow(reconstruction.reshape(28, 28), cmap='gray')
+            plt.show()
+            again = input("Show another reconstruction? Enter 'n' to quit\n")
+            if again == 'n':
+                break
+
+
+def display_hidden():
+    Xtrain, Ttrain, _, _ = getKaggleMNIST()
+
+    hidden_layer_sizes = [500, 300, 100]
+    DAE = DeepAutoEncoder(hidden_layer_sizes)
+    DAE.fit(Xtrain, lr=1e-5, epochs=20)
+    DAE.reconstruct(Xtrain)
+
 
 def main():
     Xtrain, Ttrain, _, _ = getKaggleMNIST()
+    # Xtrain = (Xtrain - Xtrain.mean())/(Xtrain.std() + .000001)
 
     # hidden_layer_sizes = [1000, 800, 500, 300, 100, 10, 2]
     # hidden_layer_sizes = [500, 300, 100, 10, 2]
-    # hidden_layer_sizes = [500, 300, 2]
+    hidden_layer_sizes = [500, 300, 2]
     # hidden_layer_sizes = [1000, 500, 300, 100, 10, 3]
-    hidden_layer_sizes = [500, 300, 3]
+    # hidden_layer_sizes = [500, 300, 3]
+
     DAE = DeepAutoEncoder(hidden_layer_sizes)
-    DAE.fit(Xtrain, lr=1e-4, epochs=10)
+    DAE.fit(Xtrain, lr=1e-5, epochs=20)
 
     reduced = DAE.get_reduced(Xtrain)
     print('reduced data shape:', reduced.shape)
@@ -159,3 +211,4 @@ def main():
 
 if __name__ == '__main__':
     main()
+    # display_hidden()
