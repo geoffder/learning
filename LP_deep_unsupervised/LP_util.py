@@ -22,9 +22,13 @@ def getKaggleMNIST():
     train = shuffle(train)
 
     Xtrain = train[:-1000, 1:] / 255
+    # Xtrain = train[:-1000, 1:]
+    # Xtrain = (Xtrain - Xtrain.mean())/Xtrain.std()
     Ytrain = train[:-1000, 0].astype(np.int32)
 
     Xtest = train[-1000:, 1:] / 255
+    # Xtest = train[-1000:, 1:]
+    # Xtest = (Xtest - Xtest.mean()) / Xtest.std()
     Ytest = train[-1000:, 0].astype(np.int32)
     return Xtrain, Ytrain, Xtest, Ytest
 

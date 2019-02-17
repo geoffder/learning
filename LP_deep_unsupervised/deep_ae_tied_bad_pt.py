@@ -89,12 +89,6 @@ class DeepAutoEncoder(object):
                 W.transpose(0, 1),
                 bias=bias
             )
-            # if len(self.nodes)-i-2 >= 0:
-            #     running_mean = self.encoder._modules[
-            #         'hidden_bnorm'+str(len(self.nodes)-i-2)].running_mean
-            #     running_var = self.encoder._modules[
-            #         'hidden_bnorm'+str(len(self.nodes)-i-2)].running_var
-            #     output = torch.nn.functional.batch_norm(output, running_mean, running_var)
             output = output.sigmoid()
         return output
 

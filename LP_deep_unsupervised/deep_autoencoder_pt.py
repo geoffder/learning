@@ -160,7 +160,7 @@ class DeepAutoEncoder(object):
 def display_hidden(load=False):
     Xtrain, Ttrain, _, _ = getKaggleMNIST()
 
-    hidden_layer_sizes = [500, 300, 10]
+    hidden_layer_sizes = [500, 300, 2]
 
     DAE = DeepAutoEncoder(hidden_layer_sizes)
     DAE.fit(Xtrain, lr=1e-2, epochs=15)
@@ -173,7 +173,7 @@ def main(load=False):
 
     # hidden_layer_sizes = [1000, 800, 500, 300, 100, 10, 2]
     # hidden_layer_sizes = [500, 300, 100, 10, 2]
-    hidden_layer_sizes = [500, 300, 2]
+    hidden_layer_sizes = [500, 300, 3]
     # hidden_layer_sizes = [1000, 500, 300, 100, 10, 3]
     # hidden_layer_sizes = [500, 300, 3]
 
@@ -190,7 +190,7 @@ def main(load=False):
             ax[0].scatter(reduTrain[Ttrain == k, 0], reduTrain[Ttrain == k, 1],
                           alpha=.5, s=80, label=k)
             ax[1].scatter(reduTest[Ttest == k, 0], reduTest[Ttest == k, 1],
-                          alpha=.5, s=80, label=k)
+                          alpha=.5, s=80)
         ax[0].set_title('training data')
         ax[0].set_xlabel('component 1')
         ax[0].set_ylabel('component 2')
@@ -219,5 +219,5 @@ if __name__ == '__main__':
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     torch.backends.cudnn.benchmark = True
 
-    # main()
-    display_hidden()
+    main()
+    # display_hidden()
