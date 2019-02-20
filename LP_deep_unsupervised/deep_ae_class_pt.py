@@ -4,7 +4,7 @@ from cycler import cycler
 from mpl_toolkits.mplot3d import Axes3D
 
 import torch
-from torch.autograd import Variable
+from torch import nn
 from torch import optim
 
 from LP_util import getKaggleMNIST
@@ -16,7 +16,7 @@ on the encoder and decoder sides.
 '''
 
 
-class DeepAutoEncoderModule(torch.nn.Module):
+class DeepAutoEncoderModule(nn.Module):
 
     def __init__(self, nodes, D):
         super(DeepAutoEncoderModule, self).__init__()
@@ -27,21 +27,21 @@ class DeepAutoEncoderModule(torch.nn.Module):
     def build(self):
         M1 = self.D
         'Encoder layers'
-        self.dropout = torch.nn.Dropout(p=.5)
-        self.weights = torch.nn.ParameterList()
-        self.hidden_biases = torch.nn.ParameterList()
-        self.hidden_bnorms = torch.nn.ModuleList()
+        self.dropout = nn.Dropout(p=.5)
+        self.weights = nn.ParameterList()
+        self.hidden_biases = nn.ParameterList()
+        self.hidden_bnorms = nn.ModuleList()
         for i, M2 in enumerate(self.nodes):
-            self.weights.append(torch.nn.Parameter(torch.randn(M1, M2)))
-            self.hidden_biases.append(torch.nn.Parameter(torch.zeros(M2)))
-            self.hidden_bnorms.append(torch.nn.BatchNorm1d(M2))
+            self.weights.append(nn.Parameter(torch.randn(M1, M2)))
+            self.hidden_biases.append(nn.Parameter(torch.zeros(M2)))
+            self.hidden_bnorms.append(nn.BatchNorm1d(M2))
             M1 = M2
         'Decoder layers (weights are tied, so only biases)'
-        self.out_biases = torch.nn.ParameterList()
-        self.out_bnorms = torch.nn.ModuleList()
+        self.out_biases = nn.ParameterList()
+        self.out_bnorms = nn.ModuleList()
         for M in reversed([self.D] + self.nodes[:-1]):
-            self.out_biases.append(torch.nn.Parameter(torch.zeros(M)))
-            self.out_bnorms.append(torch.nn.BatchNorm1d(M))
+            self.out_biases.append(nn.Parameter(torch.zeros(M)))
+            self.out_bnorms.append(nn.BatchNorm1d(M))
 
     def encode(self, X):
         X = self.dropout(X)
@@ -77,8 +77,8 @@ class DeepAutoEncoder(object):
         self.model = DeepAutoEncoderModule(self.nodes, D)
         self.model.to(device)
 
-        self.loss = torch.nn.MSELoss()
-        # self.loss = torch.nn.BCELoss()
+        self.loss = nn.MSELoss()
+        # self.loss = nn.BCELoss()
         self.optimizer = optim.Adam(self.model.parameters(), lr=lr)
 
         n_batches = N // batch_sz
