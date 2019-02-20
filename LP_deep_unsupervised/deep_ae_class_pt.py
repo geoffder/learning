@@ -105,7 +105,10 @@ class DeepAutoEncoder(object):
         # dropout and batch norm behave differently in train vs eval modes
         self.model.train()
 
-        inputs = Variable(inputs, requires_grad=False)
+        # commented out but not deleted as a reminder, Variable wrapping of
+        # tensors for forward operations is deprecated. Tensors work on their
+        # own now, and have requires_grad=False by default.
+        # inputs = Variable(inputs, requires_grad=False)
 
         self.optimizer.zero_grad()  # Reset gradient
 
@@ -127,7 +130,8 @@ class DeepAutoEncoder(object):
 
         'Wrap in no_grad to prevent graph from storing info for backprop'
         with torch.no_grad():
-            inputs = Variable(inputs, requires_grad=False)
+            # Variable wrapping is deprecated (no longer required)
+            # inputs = Variable(inputs, requires_grad=False)
 
             # Forward
             reconstruction = self.model.forward(inputs)
@@ -139,8 +143,9 @@ class DeepAutoEncoder(object):
         'Return reduced dimensionality hidden representation of X'
         X = torch.from_numpy(X).float().to(device)
         with torch.no_grad():
-            inputs = Variable(X, requires_grad=False)
-            reduced = self.model.encode(inputs).cpu().numpy()
+            # Variable wrapping is deprecated (no longer required)
+            # inputs = Variable(X, requires_grad=False)
+            reduced = self.model.encode(X).cpu().numpy()
         return reduced
 
     def reconstruct(self, X):
@@ -151,10 +156,11 @@ class DeepAutoEncoder(object):
             self.model.eval()
 
             with torch.no_grad():
-                inputs = Variable(sample, requires_grad=False)
+                # Variable wrapping is deprecated (no longer required)
+                # inputs = Variable(sample, requires_grad=False)
 
                 # Forward
-                reconstruction = self.model.forward(inputs).cpu().numpy()
+                reconstruction = self.model.forward(sample).cpu().numpy()
 
             fig, axes = plt.subplots(1, 2)
             axes[0].imshow(X[idx].reshape(28, 28), cmap='gray')
@@ -173,7 +179,7 @@ def display_hidden(load=False):
     hidden_layer_sizes = [500, 300, 10]
 
     DAE = DeepAutoEncoder(hidden_layer_sizes)
-    DAE.fit(Xtrain, lr=1e-2, epochs=10)
+    DAE.fit(Xtrain, lr=1e-2, epochs=20)
 
     DAE.reconstruct(Xtrain)
 
@@ -183,7 +189,8 @@ def main(load=False):
 
     # hidden_layer_sizes = [1000, 800, 500, 300, 100, 10, 2]
     # hidden_layer_sizes = [500, 300, 100, 10, 2]
-    hidden_layer_sizes = [500, 300, 2]
+    # hidden_layer_sizes = [500, 300, 2]
+    hidden_layer_sizes = [1000, 500, 250, 2]
     # hidden_layer_sizes = [1000, 500, 300, 100, 10, 3]
     # hidden_layer_sizes = [500, 300, 3]
 
