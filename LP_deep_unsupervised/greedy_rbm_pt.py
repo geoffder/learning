@@ -34,28 +34,30 @@ class RBM(nn.Module):
     def forward(self, V):
         return self.sample_v(self.sample_h(V))
 
+    def forward_hidden_logits(self, X):
+        return X @ self.W + self.c
+
     def forward_hidden(self, X):
-        return torch.sigmoid(X @ self.W + self.c)
+        return torch.sigmoid(self.forward_hidden_logits(X))
 
     def free_energy(self, V):
-        first_term = V @ self.b.reshape(-1,)
+        first_term = -V @ self.b.reshape(-1,)
         second_term = torch.sum(nn.functional.softplus(V @ self.W + self.c), 1)
         return first_term - second_term
 
-    def fit(self, X, lr=1e-4, epochs=40, batch_sz=200, print_every=50,
+    def fit(self, X, lr=1e-4, epochs=5, batch_sz=100, print_every=50,
             testing=False):
         N = X.shape[0]
 
         if not torch.is_tensor(X):
             X = torch.from_numpy(X).float().to(device)
 
-        self.loss = FakeLoss()  # free energy v minus free energy v'
+        # self.loss = FakeLoss()  # free energy v minus free energy v'
         self.optimizer = optim.Adam(self.parameters(), lr=lr)
 
         n_batches = N // batch_sz
         costs = []
         for i in range(epochs):
-            cost = 0
             if testing:
                 print("epoch:", i, "n_batches:", n_batches)
             inds = torch.randperm(X.size()[0])
@@ -67,11 +69,15 @@ class RBM(nn.Module):
 
                 if j % print_every == 0 and testing:
                     print("cost: %f" % (cost))
-            costs.append(cost)
+                    costs.append(cost)
+            # costs.append(cost)
 
         if testing:
             plt.plot(costs)
             plt.show()
+
+    def EnergyLoss(self, V, V_prime):
+        return torch.mean(self.free_energy(V) - self.free_energy(V_prime))
 
     def train_step(self, V):
         self.train()  # put this module into training mode
@@ -79,8 +85,9 @@ class RBM(nn.Module):
 
         # Forward
         V_prime = self.forward(V)
-        output = self.loss.forward(
-            self.free_energy(V), self.free_energy(V_prime))
+        # output = self.loss.forward(
+        #     self.free_energy(V), self.free_energy(V_prime))
+        output = self.EnergyLoss(V, V_prime)
 
         # Backward
         output.backward()
@@ -91,7 +98,8 @@ class RBM(nn.Module):
     def transform(self, X):
         self.eval()
         with torch.no_grad():
-            H = torch.sigmoid(X @ self.W + self.c)
+            H = self.sample_h(X)
+            # H = torch.sigmoid(X @ self.W + self.c)
         return H
 
 
@@ -130,13 +138,13 @@ class PreTrainedANN(nn.Module):
         self.denseOut = nn.Linear(M1, 10)
         self.to(device)
 
-    def pretrain(self, X, pre_epochs):
+    def pretrain(self, X, pre_epochs, pre_lr):
         for rbm in self.RBMs:
-            rbm.fit(X, lr=1e-4, epochs=pre_epochs)
+            rbm.fit(X, lr=pre_lr, epochs=pre_epochs)
             X = rbm.transform(X)
 
-    def fit(self, Xtrain, Ttrain, Xtest, Ttest, lr=1e-4, pre_epochs=3,
-            epochs=40, batch_sz=200, print_every=50):
+    def fit(self, Xtrain, Ttrain, Xtest, Ttest, pre_epochs=3, pre_lr=1e-3,
+            lr=1e-4, epochs=40, batch_sz=200, print_every=50):
 
         N = Xtrain.shape[0]
 
@@ -148,7 +156,7 @@ class PreTrainedANN(nn.Module):
         if pre_epochs > 0:
             # pre-train stacked Restricted Boltzmann Machines
             print('#### BEGIN RBM PRE-TRAINING ####')
-            self.pretrain(Xtrain, pre_epochs)
+            self.pretrain(Xtrain, pre_epochs, pre_lr)
 
         self.loss = torch.nn.CrossEntropyLoss(reduction='mean')
         self.optimizer = optim.Adam(self.parameters(), lr=lr)
@@ -219,7 +227,8 @@ class PreTrainedANN(nn.Module):
     def forward(self, X):
         X = self.dropouts[0](X)
         for rbm, drop in zip(self.RBMs, self.dropouts):
-            X = drop(rbm.forward_hidden(X))
+            # X = drop(rbm.forward_hidden(X))
+            X = drop(nn.functional.relu(rbm.forward_hidden_logits(X)))
         return self.denseOut(X)
 
     def predict(self, inputs):
@@ -237,15 +246,17 @@ def single_rbm():
     Xtrain, Ttrain, Xtest, Ttest, = getKaggleMNIST()
 
     rbm = RBM(Xtrain.shape[1], 100)
-    rbm.fit(Xtrain, lr=1e-4, epochs=5, testing=True)
+    rbm.fit(Xtrain, lr=1e-5, epochs=3, testing=True)
 
 
 def main():
     Xtrain, Ttrain, Xtest, Ttest = getKaggleMNIST()
 
-    hidden_layer_sizes = [500, 300, 100]
+    # hidden_layer_sizes = [500, 300, 100]
+    hidden_layer_sizes = [1000, 750, 500]
     ANN = PreTrainedANN(Xtrain.shape[1], hidden_layer_sizes)
-    ANN.fit(Xtrain, Ttrain, Xtest, Ttest, lr=1e-4, pre_epochs=3, epochs=20)
+    ANN.fit(Xtrain, Ttrain, Xtest, Ttest,  pre_epochs=3, pre_lr=1e-4,
+            lr=1e-3, epochs=10)
 
 
 if __name__ == '__main__':
