@@ -141,6 +141,7 @@ class DeepAutoEncoder(object):
 
     def get_reduced(self, X):
         'Return reduced dimensionality hidden representation of X'
+        self.model.eval()
         X = torch.from_numpy(X).float().to(device)
         with torch.no_grad():
             # Variable wrapping is deprecated (no longer required)
@@ -176,10 +177,11 @@ class DeepAutoEncoder(object):
 def display_hidden(load=False):
     Xtrain, Ttrain, _, _ = getKaggleMNIST()
 
+    # hidden_layer_sizes = [1000, 500, 250, 2]
     hidden_layer_sizes = [500, 300, 10]
 
     DAE = DeepAutoEncoder(hidden_layer_sizes)
-    DAE.fit(Xtrain, lr=1e-2, epochs=20)
+    DAE.fit(Xtrain, lr=1e-2, epochs=10)
 
     DAE.reconstruct(Xtrain)
 
@@ -192,10 +194,11 @@ def main(load=False):
     # hidden_layer_sizes = [500, 300, 2]
     hidden_layer_sizes = [1000, 500, 250, 2]
     # hidden_layer_sizes = [1000, 500, 300, 100, 10, 3]
+    # hidden_layer_sizes = [1000, 500, 250, 3]
     # hidden_layer_sizes = [500, 300, 3]
 
     DAE = DeepAutoEncoder(hidden_layer_sizes)
-    DAE.fit(Xtrain, lr=1e-2, epochs=10)
+    DAE.fit(Xtrain, lr=1e-2, epochs=20)
 
     reduTrain = DAE.get_reduced(Xtrain)
     reduTest = DAE.get_reduced(Xtest)
