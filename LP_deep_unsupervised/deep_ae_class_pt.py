@@ -210,9 +210,9 @@ def main(load=False):
         fig, ax = plt.subplots(1, 2)
         for k in range(10):
             ax[0].scatter(reduTrain[Ttrain == k, 0], reduTrain[Ttrain == k, 1],
-                          alpha=.5, s=80, label=k)
+                          alpha=.5, s=80, marker='$%s$' % k, label=k)
             ax[1].scatter(reduTest[Ttest == k, 0], reduTest[Ttest == k, 1],
-                          alpha=.5, s=80)
+                          alpha=.5, s=80, marker='$%s$' % k)
         ax[0].set_title('training data')
         ax[0].set_xlabel('component 1')
         ax[0].set_ylabel('component 2')
