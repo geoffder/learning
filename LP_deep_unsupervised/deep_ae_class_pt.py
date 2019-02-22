@@ -49,7 +49,8 @@ class DeepAutoEncoderModule(nn.Module):
                 self.weights, self.hidden_biases, self.hidden_bnorms):
             X = X @ W + b
             X = bnorm(X)
-            X = torch.sigmoid(X)
+            # X = torch.sigmoid(X)
+            X = nn.functional.relu(X)
         return X
 
     def decode(self, X):
@@ -57,7 +58,8 @@ class DeepAutoEncoderModule(nn.Module):
                 reversed(self.weights), self.out_biases, self.out_bnorms):
             X = X @ W.transpose(0, 1) + b
             X = bnorm(X)
-            X = torch.sigmoid(X)
+            # X = torch.sigmoid(X)
+            X = nn.functional.relu(X)
         return X
 
     def forward(self, X):
@@ -77,14 +79,13 @@ class DeepAutoEncoder(object):
         self.model = DeepAutoEncoderModule(self.nodes, D)
         self.model.to(device)
 
-        self.loss = nn.MSELoss()
+        self.loss = nn.MSELoss().to(device)
         # self.loss = nn.BCELoss()
         self.optimizer = optim.Adam(self.model.parameters(), lr=lr)
 
         n_batches = N // batch_sz
         costs = []
         for i in range(epochs):
-            cost = 0
             print("epoch:", i, "n_batches:", n_batches)
             inds = torch.randperm(X.size()[0])
             X = X[inds]
@@ -95,7 +96,8 @@ class DeepAutoEncoder(object):
 
                 if j % print_every == 0:
                     print("cost: %f" % (cost))
-            costs.append(cost)
+                    costs.append(cost)
+            # costs.append(cost)
 
         plt.plot(costs)
         plt.show()
@@ -198,7 +200,7 @@ def main(load=False):
     # hidden_layer_sizes = [500, 300, 3]
 
     DAE = DeepAutoEncoder(hidden_layer_sizes)
-    DAE.fit(Xtrain, lr=1e-2, epochs=20)
+    DAE.fit(Xtrain, lr=1e-2, epochs=10)
 
     reduTrain = DAE.get_reduced(Xtrain)
     reduTest = DAE.get_reduced(Xtest)
