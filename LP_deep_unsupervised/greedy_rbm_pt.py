@@ -7,6 +7,12 @@ from torch import optim
 
 from LP_util import getKaggleMNIST
 
+'''
+Greedy layer-wise pre-training using RBMs, followed by classification on the
+MNIST dataset. RBMs are stacked and fit, then their weights are used for the
+forward pass through the final ANN before the logistic layer added on top.
+'''
+
 
 class RBM(nn.Module):
     'Restricted Boltzmann Machine Custom Module'
@@ -24,23 +30,32 @@ class RBM(nn.Module):
         self.to(device)
 
     def sample_h(self, v):
+        'RBM forward pass from visible to hidden.'
         p_h_given_v = torch.sigmoid(v @ self.W + self.c)
         return torch.bernoulli(p_h_given_v)
 
     def sample_v(self, h):
+        'RBM backward pass from hidden to visible.'
         p_v_given_h = torch.sigmoid(h @ self.W.t() + self.b)
         return torch.bernoulli(p_v_given_h)
 
     def forward(self, V):
+        'Calculate Vprime with single round of Gibbs sampling (CD-1)'
         return self.sample_v(self.sample_h(V))
 
     def forward_hidden_logits(self, X):
+        '''
+        Get activations of hidden layer (so non-linearity can be applied
+        seperately). Used for ANN.forward() once RBMs are stacked.
+        '''
         return X @ self.W + self.c
 
     def forward_hidden(self, X):
+        'Used for ANN.forward() once RBMs are stacked. Sigmoidal activation.'
         return torch.sigmoid(self.forward_hidden_logits(X))
 
     def free_energy(self, V):
+        'Calculate free-energy of the visible layer. Used for cost function.'
         first_term = -V @ self.b.reshape(-1,)
         second_term = torch.sum(nn.functional.softplus(V @ self.W + self.c), 1)
         return first_term - second_term
@@ -77,6 +92,7 @@ class RBM(nn.Module):
             plt.show()
 
     def EnergyLoss(self, V, V_prime):
+        'Custom RBM loss function. .backward() is ran on the output tensor.'
         return torch.mean(self.free_energy(V) - self.free_energy(V_prime))
 
     def train_step(self, V):
@@ -85,15 +101,15 @@ class RBM(nn.Module):
 
         # Forward
         V_prime = self.forward(V)
-        # output = self.loss.forward(
+        # loss = self.loss.forward(
         #     self.free_energy(V), self.free_energy(V_prime))
-        output = self.EnergyLoss(V, V_prime)
+        loss = self.EnergyLoss(V, V_prime)
 
         # Backward
-        output.backward()
+        loss.backward()
         self.optimizer.step()  # Update parameters
 
-        return output.item()
+        return loss.item()
 
     def transform(self, X):
         self.eval()
@@ -108,6 +124,9 @@ class FakeLoss(torch.autograd.Function):
     Custom loss function for Restricted Boltzmann Machines. Forward is written,
     inputs are free energy of input (original visible layer) and the free
     energy of the probability of visible given hidden.
+
+    Leaving as an example, since it seemed to work, but I've replaced this
+    with a function contained within the RBM module.
     '''
     @staticmethod
     def forward(fe_v, fe_vprime):  # , bias=None):
@@ -139,6 +158,7 @@ class PreTrainedANN(nn.Module):
         self.to(device)
 
     def pretrain(self, X, pre_epochs, pre_lr):
+        'Fit each of the stacked RBMs.'
         for rbm in self.RBMs:
             rbm.fit(X, lr=pre_lr, epochs=pre_epochs)
             X = rbm.transform(X)
@@ -226,7 +246,7 @@ class PreTrainedANN(nn.Module):
 
     def forward(self, X):
         X = self.dropouts[0](X)
-        for rbm, drop in zip(self.RBMs, self.dropouts):
+        for rbm, drop in zip(self.RBMs, self.dropouts[1:]):
             # X = drop(rbm.forward_hidden(X))
             X = drop(nn.functional.relu(rbm.forward_hidden_logits(X)))
         return self.denseOut(X)
@@ -246,7 +266,7 @@ def single_rbm():
     Xtrain, Ttrain, Xtest, Ttest, = getKaggleMNIST()
 
     rbm = RBM(Xtrain.shape[1], 100)
-    rbm.fit(Xtrain, lr=1e-5, epochs=3, testing=True)
+    rbm.fit(Xtrain, lr=1e-1, epochs=3, testing=True)
 
 
 def main():
@@ -255,7 +275,7 @@ def main():
     # hidden_layer_sizes = [500, 300, 100]
     hidden_layer_sizes = [1000, 750, 500]
     ANN = PreTrainedANN(Xtrain.shape[1], hidden_layer_sizes)
-    ANN.fit(Xtrain, Ttrain, Xtest, Ttest,  pre_epochs=3, pre_lr=1e-4,
+    ANN.fit(Xtrain, Ttrain, Xtest, Ttest,  pre_epochs=3, pre_lr=1e-5,
             lr=1e-3, epochs=10)
 
 
