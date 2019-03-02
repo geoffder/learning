@@ -26,9 +26,11 @@ while idxA < len(ad_A) and idxB < len(ad_B):
     r = requests.get('http://localhost:8888/get_ad')
     r = r.json()
     if r['advertisement_id'] == 'A':
+        # print(r['advertisement_id'], ad_A[idxA])
         action = ad_A[idxA]
         idxA += 1
     else:
+        # print(r['advertisement_id'], ad_B[idxB])
         action = ad_B[idxB]
         idxB += 1
 
