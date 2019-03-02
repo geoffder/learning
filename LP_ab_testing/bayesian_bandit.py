@@ -1,5 +1,5 @@
 import numpy as np
-from scipy import stats
+from scipy.stats import beta
 import matplotlib.pyplot as plt
 
 num_trials = 2000
@@ -41,7 +41,7 @@ def plotBandits(bandits, trial):
     x = np.linspace(0, 1, 200)  # axis between 0 and 1, 200 points.
     for bandito in bandits:
         # get probability of each value of x (likelihood of each win-rate)
-        y = stats.beta.pdf(x, bandito.a, bandito.b)
+        y = beta.pdf(x, bandito.a, bandito.b)
         plt.plot(x, y, label='real p: %.4f' % bandito.p)
     plt.xlabel('Win Rate')
     plt.title('Bandit Distributions after %s trials' % trial)
