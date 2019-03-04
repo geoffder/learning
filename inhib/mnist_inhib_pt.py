@@ -8,34 +8,58 @@ from torch import nn
 from torch import optim
 
 '''
-Deep AutoEncoder using custom class (inheriting nn.Module) in pytorch. Tied
-weights are used, unlike deep_autoencoder_pt.py which learns separate weights
-on the encoder and decoder sides.
+Experimental Layer to get more practice with making custom nn.Modules. The idea
+is to allow strongly responding neurons to suppress others within the same
+layer, like lateral inhibition. Consider layering then with static masking
+so each set of weights (for each inhib layer) corresponds to a consistent
+cluster of lateral neuron connections. NOTE: Screwing around here, likely to
+not be a great idea.
 '''
 
 
 class Inhibitor(nn.Module):
 
-    def __init__(self, M):
+    def __init__(self, M, mode='no_drop'):
         super(Inhibitor, self).__init__()
         self.M = M
+        self.mode = mode
         self.W = nn.Parameter(torch.randn(M, M))
-        self.amps = nn.Parameter(torch.rand(M))
-        self.inh = nn.Parameter(torch.rand(1))
-        # self.inh = nn.Parameter(torch.Tensor([.3]), requires_grad=False)
-        self.mask = nn.Parameter(torch.rand(M, M).ge(.8).float(),
-                                 requires_grad=False)
+        self.bnorm = nn.BatchNorm1d(M)
+        if mode == 'static_drop':
+            self.mask = nn.Parameter(
+                torch.bernoulli(torch.ones(M, M)*.2),
+                requires_grad=False)
+
+    def no_drop(self, X):
+        # inhib = torch.sigmoid(X @ self.W)
+        inhib = torch.sigmoid(self.bnorm(X @ self.W))
+        return X - inhib*X
+
+    def static_drop(self, X):
+        maskW = self.mask @ self.W
+        inhib = torch.sigmoid(X @ maskW)
+        return X - inhib*X
+
+    def dynamic_drop(self, X):
+        # construct on GPU (no transfer)
+        if self.training:
+            mask = nn.Parameter(
+                torch.bernoulli(
+                    torch.cuda.FloatTensor(self.M, self.M).fill_(.5)),
+                requires_grad=False)
+            maskW = mask @ self.W
+        else:
+            maskW = self.W * 2
+        inhib = torch.sigmoid(X @ maskW)
+        return X - inhib*X
 
     def forward(self, X):
-        maskW = self.mask @ self.W
-        inhib = nn.functional.relu(
-            X*torch.clamp(self.amps, min=0) @ maskW) \
-            * torch.clamp(self.inh, min=0)
-        # inhib = nn.functional.relu(
-        #     X*torch.clamp(self.amps, min=0) @ self.W) \
-        #     * torch.clamp(self.inh, min=0)
-        # inhib = inhib @ self.mask
-        return X - inhib
+        if self.mode == 'no_drop':
+            return self.no_drop(X)
+        elif self.mode == 'static_drop':
+            return self.static_drop(X)
+        else:
+            return self.dynamic_drop(X)
 
 
 class InhibNeuralNet(nn.Module):
@@ -59,7 +83,7 @@ class InhibNeuralNet(nn.Module):
         for i, M2 in enumerate(self.nodes):
             self.linears.append(nn.Linear(M1, M2))
             self.bnorms.append(nn.BatchNorm1d(M2))
-            self.inhibitors.append(Inhibitor(M2))
+            self.inhibitors.append(Inhibitor(M2, mode='no_drop'))
             M1 = M2
         # logistic regression layer (no activation)
         self.logistic = nn.Linear(M1, self.K)
