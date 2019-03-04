@@ -20,11 +20,21 @@ class Inhibitor(nn.Module):
         super(Inhibitor, self).__init__()
         self.M = M
         self.W = nn.Parameter(torch.randn(M, M))
-        self.b = nn.Parameter(torch.randn(M))
-        self.strength = .1
+        self.amps = nn.Parameter(torch.rand(M))
+        self.inh = nn.Parameter(torch.rand(1))
+        # self.inh = nn.Parameter(torch.Tensor([.3]), requires_grad=False)
+        self.mask = nn.Parameter(torch.rand(M, M).ge(.8).float(),
+                                 requires_grad=False)
 
     def forward(self, X):
-        inhib = nn.functional.relu(X @ self.W + self.b)*self.strength
+        maskW = self.mask @ self.W
+        inhib = nn.functional.relu(
+            X*torch.clamp(self.amps, min=0) @ maskW) \
+            * torch.clamp(self.inh, min=0)
+        # inhib = nn.functional.relu(
+        #     X*torch.clamp(self.amps, min=0) @ self.W) \
+        #     * torch.clamp(self.inh, min=0)
+        # inhib = inhib @ self.mask
         return X - inhib
 
 
@@ -62,8 +72,9 @@ class InhibNeuralNet(nn.Module):
                 self.linears, self.bnorms, self.inhibitors):
             X = linear(X)
             X = bnorm(X)
-            X = nn.functional.relu(X)
             X = inhib(X)
+            X = nn.functional.relu(X)
+            # X = self.hiddenDropout(X)
         return self.logistic(X)
 
     def fit(self, Xtrain, Ttrain, Xtest, Ttest, lr=1e-4, reg=1e-3,
@@ -77,7 +88,7 @@ class InhibNeuralNet(nn.Module):
             Xtest = torch.from_numpy(Xtest).float().to(device)
             Ttest = torch.from_numpy(Ttest).long().to(device)
 
-            self.loss = torch.nn.CrossEntropyLoss(size_average=True).to(device)
+            self.loss = torch.nn.CrossEntropyLoss(reduction='mean').to(device)
             self.optimizer = optim.Adam(self.parameters(), lr=lr)
 
             n_batches = N // batch_sz
@@ -94,18 +105,21 @@ class InhibNeuralNet(nn.Module):
                     cost += self.train_step(Xbatch, Tbatch)
 
                     if j % print_every == 0:
-                        inds = torch.randperm(Xtest.size()[0])
-                        Xtest, Ttest = Xtest[inds], Ttest[inds]
-                        train_acc = self.score(Xtrain[:1000], Ttrain[:1000])
-                        test_acc = self.score(Xtest[:1000], Ttest[:1000])
-                        test_cost = self.get_cost(Xtest[:1000], Ttest[:1000])
-                        print("cost: %f, acc: %.2f" % (test_cost, test_acc))
+                        # inds = torch.randperm(Xtest.size()[0])
+                        # Xtest, Ttest = Xtest[inds], Ttest[inds]
+                        # train_acc = self.score(Xtrain[:1000], Ttrain[:1000])
+                        # test_acc = self.score(Xtest[:1000], Ttest[:1000])
+                        # test_cost = self.get_cost(Xtest[:1000], Ttest[:1000])
+                        train_acc = self.score(Xtrain, Ttrain)
+                        test_acc = self.score(Xtest, Ttest)
+                        test_cost = self.get_cost(Xtest, Ttest)
+                        print("cost: %f, acc: %.3f" % (test_cost, test_acc))
 
-                # for plotting
-                train_costs.append(cost / n_batches)
-                train_accs.append(train_acc)
+                        # for plotting
+                        train_accs.append(train_acc)
+                        test_accs.append(test_acc)
                 test_costs.append(test_cost)
-                test_accs.append(test_acc)
+                train_costs.append(cost / n_batches)
 
             fig, axes = plt.subplots(1, 2)
             axes[0].plot(train_costs, label='training cost')
@@ -181,7 +195,7 @@ def main(load=False):
     hidden_layer_sizes = [1000, 500, 250, 10]
 
     INN = InhibNeuralNet(hidden_layer_sizes, D, K)
-    INN.fit(Xtrain, Ttrain, Xtest, Ttest, lr=1e-2, epochs=10)
+    INN.fit(Xtrain, Ttrain, Xtest, Ttest, lr=1e-2, epochs=20)
 
 
 if __name__ == '__main__':
