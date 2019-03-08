@@ -66,21 +66,24 @@ else:
     remove_punctuation = remove_punctuation_3
 
 
+# GD notes: annotated sentence vectorization routine below. Very useful for
+# general NLP tasks. Good reference for future pipelines.
 def get_robert_frost():
-    word2idx = {'START': 0, 'END': 1}
+    word2idx = {'START': 0, 'END': 1}  # first idxs are START and END tokens
     current_idx = 2
     sentences = []
     for line in open('../hmm_class/robert_frost.txt'):
-        line = line.strip()
+        line = line.strip()  # removes trailing whitespace
         if line:
+            # remove punctuation, then split string into list by spaces
             tokens = remove_punctuation(line.lower()).split()
             sentence = []
             for t in tokens:
                 if t not in word2idx:
-                    word2idx[t] = current_idx
+                    word2idx[t] = current_idx  # add new word to idx dictionary
                     current_idx += 1
-                idx = word2idx[t]
-                sentence.append(idx)
+                idx = word2idx[t]  # get idx for the current word/token
+                sentence.append(idx)  # sentence is a list of idxs
             sentences.append(sentence)
     return sentences, word2idx
 
