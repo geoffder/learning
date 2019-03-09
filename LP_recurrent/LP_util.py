@@ -72,7 +72,7 @@ def get_robert_frost():
     word2idx = {'START': 0, 'END': 1}  # first idxs are START and END tokens
     current_idx = 2
     sentences = []
-    for line in open('../hmm_class/robert_frost.txt'):
+    for line in open('robert_frost.txt'):
         line = line.strip()  # removes trailing whitespace
         if line:
             # remove punctuation, then split string into list by spaces
