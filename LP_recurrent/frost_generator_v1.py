@@ -4,11 +4,16 @@ import matplotlib.pyplot as plt
 
 from sklearn.utils import shuffle
 from LP_util import get_robert_frost
+from os import getcwd
 
 '''
-Parity problem with a simple recurrent neural net. Based off of the tensorflow
-implementation by Lazy Programmer, but restructured into classes with better
-reusability and additional notes.
+Language model that learns from Robert Frost poems (robert_frost.txt) to create
+word embeddings that can be used to generate Robert Frost flavoured gibberish.
+Similar architecture to the SimpleRNN used for the parity problem, but with an
+additional embedding layer at the bottom (beginning). Sentences are converted
+from integer arrays (indices) to one-hot vocab matrices, then fed through the
+network. Trained in an unsupervised manner, trying to predict the next word,
+given the previous words.
 '''
 
 
@@ -92,11 +97,14 @@ class HiddenLayer(object):
 
 
 class LanguageRNN(object):
-    def __init__(self, V, D, M):
+    def __init__(self, V, D, M, folder=''):
         self.V = V
         self.D = D
         self.M = M  # hidden layer size
         self.build()
+        # for saving (and loading) graph Variables
+        self.path = getcwd() + '/' + folder + '/'
+        self.saver = tf.train.Saver()
 
     def build(self):
         self.embed = HiddenLayer(self.V, self.D, bias=False, activation=None)
@@ -105,7 +113,8 @@ class LanguageRNN(object):
         self.layers = [self.embed, self.rnnUnit, self.logistic]
         self.params = [p for layer in self.layers for p in layer.params]
 
-    def fit(self, sentences, word2idx, lr=1e-2, epochs=100, show_fig=False):
+    def fit(self, sentences, word2idx, lr=1e-2, epochs=100, show_fig=False,
+            save_model=False, load_model=False):
         N, V = len(sentences), len(word2idx)
 
         X, Y = self.vector_matrices(sentences, word2idx)
@@ -151,6 +160,8 @@ class LanguageRNN(object):
         init = tf.global_variables_initializer()
         with tf.Session() as sess:
             sess.run(init)
+            if load_model:
+                self.saver.restore(sess, self.path+'model.ckpt')
 
             epoch_costs, epoch_accs = [], []
             for i in range(epochs):
@@ -182,6 +193,10 @@ class LanguageRNN(object):
                 # print("epoch:", i, "cost:", epoch_cost,
                 #       "classification rate:", (accuracy/10))
 
+            if save_model:
+                save_path = self.saver.save(sess, self.path+'model.ckpt')
+                print("Model saved in path: %s" % save_path)
+
         if show_fig:
             fig, axes = plt.subplots(1, 2)
             axes[0].plot(epoch_costs)
@@ -192,6 +207,55 @@ class LanguageRNN(object):
             axes[1].set_ylabel('Accuracy')
             fig.tight_layout()
             plt.show()
+
+    def generate(self, init_word_prob, word2idx, load_model=False):
+        # convert word2idx -> idx2word
+        idx2word = {v: k for k, v in word2idx.items()}
+        V = len(init_word_prob)
+
+        tfX = tf.placeholder(tf.float32, shape=(None, V), name='X')
+        output_probs = tf.nn.softmax(self.logistic.forward(
+            self.rnnUnit.scanner(self.embed.forward(tfX))))
+
+        # generate 4 lines at a time
+        n_lines = 0
+
+        # pick a word to start the line based on frequency of each word
+        # starting lines in the training dataset
+        X = np.zeros((1, V))  # do one-hot because of how I built the net
+        # can see the benefit of feeding the network the idxs better now
+        word_idx = np.random.choice(V, p=init_word_prob)
+        X[0, word_idx] = 1
+
+        print(idx2word[word_idx], end=" ")
+
+        init = tf.global_variables_initializer()
+        with tf.Session() as sess:
+            sess.run(init)
+            if load_model:
+                self.saver.restore(sess, self.path+'model.ckpt')
+            while n_lines < 4:
+                next_probs = sess.run(output_probs,
+                                      feed_dict={tfX: X})[-1]  # last one
+                # draw the next word based on predicted probabilities
+                word_idx = np.random.choice(V, p=next_probs)
+                one_hot = np.zeros((1, V))
+                one_hot[0, word_idx] = 1
+                X = np.concatenate([X, one_hot], axis=0)
+                if word_idx > 1:
+                    # it's a real word, not start/end token
+                    word = idx2word[word_idx]
+                    print(word, end=" ")
+                elif word_idx == 1:
+                    # end of line predicted (end token)
+                    n_lines += 1
+                    print('')  # moves to next line of output in terminal
+                    if n_lines < 4:
+                        # reset to start of line
+                        X = np.zeros((1, V))
+                        word_idx = np.random.choice(V, p=init_word_prob)
+                        X[0, word_idx] = 1
+                        print(idx2word[word_idx], end=" ")
 
     @staticmethod
     def one_hot_sentences(sentences, V):
@@ -219,17 +283,35 @@ def train_language(lr=1e-2, epochs=200):
     V = len(word2idx)  # len returns number of pairs in dict
     print('Number of Sentences:', N, 'Vocabulary size:', V)
     D = 50  # embedding dimensions
-    nodes = 20
-    rnn = LanguageRNN(V, D, nodes)
-    rnn.fit(sentences, word2idx, lr=lr, epochs=epochs, show_fig=True)
+    nodes = 20  # try 50
+    rnn = LanguageRNN(V, D, nodes, folder='frost_model_v1')
+    rnn.fit(sentences, word2idx, lr=lr, epochs=epochs, show_fig=True,
+            save_model=True, load_model=True)
 
     return rnn
 
 
-def generate_poems(rnn):
-    pass
+def generate_poem(model=None):
+    sentences, word2idx = get_robert_frost()
+    V = len(word2idx)  # len returns number of pairs in dict
+    D = 50  # embedding dimensions
+    nodes = 20
+
+    # determine initial state distribution for starting sentences
+    # num of appearances of each word at start of line divided by num sentences
+    init_word_prob = np.zeros(V)
+    for sentence in sentences:
+        init_word_prob[sentence[0]] += 1
+    init_word_prob /= init_word_prob.sum()
+
+    if not model:
+        model = LanguageRNN(V, D, nodes, folder='frost_model')
+        model.generate(init_word_prob, word2idx, load_model=True)
+    else:
+        model.generate(init_word_prob, word2idx, load_model=False)
 
 
 if __name__ == '__main__':
-    rnn = train_language(lr=1e-3)
-    generate_poems(rnn)
+    # rnn = train_language(lr=1e-3, epochs=100)
+    # generate_poem(rnn)
+    generate_poem()
