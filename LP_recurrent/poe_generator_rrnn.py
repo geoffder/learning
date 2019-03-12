@@ -9,7 +9,8 @@ import string
 '''
 Slight modification on frost_generator_v2, now using a Rated Recurrent Unit,
 rather than a Simple Recurrent Unit. Now using Poe poems instead of Frost,
-why not.
+why not. Note: Pretty incredible how much faster this trains than the Simple
+Recurrent Unit.
 '''
 
 
@@ -37,7 +38,7 @@ class RRNNunit(object):
             # hidden bias
             self.bh = tf.Variable(np.zeros(self.M2, dtype=np.float32))
             # rate matrix
-            self.z = tf.Variable(np.ones(self.M2, dtype=np.float32)*.5)
+            self.z = tf.Variable(np.ones(self.M2, dtype=np.float32))
             # initial hidden repesentation
             self.h0 = tf.Variable(np.zeros(self.M2, dtype=np.float32))
             self.params = [self.Wx, self.Wh, self.bh, self.h0, self.z]
@@ -51,8 +52,8 @@ class RRNNunit(object):
             # has the shape of (1, M2), since it is a single timestep with M2
             # dimensions (X already multiplied with Wx)
             last = tf.reshape(last, (1, self.M2))
-            hidden = tf.nn.relu(
-                new*(1-self.z) + (tf.matmul(last, self.Wh) + self.bh)*self.z)
+            h_hat = tf.nn.relu(new + (tf.matmul(last, self.Wh) + self.bh))
+            hidden = h_hat*self.z + last*(1-self.z)
             return tf.reshape(hidden, (self.M2,))
 
         def scanner(self, X):
@@ -283,7 +284,7 @@ def train_language(lr=1e-2, epochs=200):
     nodes = 50
     rnn = LanguageRNN(V, D, nodes, folder='poe_model_rrnn')
     rnn.fit(sentences, word2idx, lr=lr, epochs=epochs, show_fig=True,
-            save_model=True, load_model=True)
+            save_model=False, load_model=False)
 
     return rnn
 
@@ -309,6 +310,6 @@ def generate_poem(model=False):
 
 
 if __name__ == '__main__':
-    # rnn = train_language(lr=1e-3, epochs=150)
+    rnn = train_language(lr=1e-3, epochs=50)
     # generate_poem(rnn)
-    generate_poem()
+    # generate_poem()
