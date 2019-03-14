@@ -6,88 +6,88 @@ from LP_util import get_poetry_classifier_data
 from sklearn.utils import shuffle
 from os import getcwd
 
-'''
+"""
 Classification of lines of poetry as being written by Frost or Poe based on
 parts-of-speech tag sequences. Tensorflow implementation using Gated Recurrent
 Unit, rather than a Simple/Elman unit. Should probably add the final touch of
 actually testing on a validation set, but it works and seems to train better,
 so that's what matters.
-'''
+"""
 
 
 def init_weight(M1, M2):
-    '''
+    """
     The weights being small is really important, my pytorch implementation did
     not work until I remembered to divide the randn weights like so.
-    '''
+    """
     return np.random.randn(M1, M2) / np.sqrt(M1 + M2)
 
 
 class GRU(object):
-        def __init__(self, M1, M2):
-            self.M1 = M1  # input size
-            self.M2 = M2  # hidden layer size
-            self.build()
+    def __init__(self, M1, M2):
+        self.M1 = M1  # input size
+        self.M2 = M2  # hidden layer size
+        self.build()
 
-        def build(self):
-            # input weight (transforms X before entering the hidden recurrence)
-            self.Wxh = tf.Variable(
-                init_weight(self.M1, self.M2).astype(np.float32))
-            # hidden weight and bias (recurrent)
-            self.Whh = tf.Variable(
-                init_weight(self.M2, self.M2).astype(np.float32))
-            self.bh = tf.Variable(np.zeros(self.M2, dtype=np.float32))
-            # update gate weights
-            self.Wxz = tf.Variable(
-                init_weight(self.M1, self.M2).astype(np.float32))
-            self.Whz = tf.Variable(
-                init_weight(self.M2, self.M2).astype(np.float32))
-            self.bz = tf.Variable(np.zeros(self.M2, dtype=np.float32))
-            # reset gate weights
-            self.Wxr = tf.Variable(
-                init_weight(self.M1, self.M2).astype(np.float32))
-            self.Whr = tf.Variable(
-                init_weight(self.M2, self.M2).astype(np.float32))
-            self.br = tf.Variable(np.zeros(self.M2, dtype=np.float32))
-            # initial hidden repesentation
-            self.h0 = tf.Variable(np.zeros(self.M2, dtype=np.float32))
-            self.params = [self.Wxh, self.Whh, self.bh, self.h0, self.Wxz,
-                           self.Whz, self.bz, self.Wxr, self.Whr, self.br]
+    def build(self):
+        # input weight (transforms X before entering the hidden recurrence)
+        self.Wxh = tf.Variable(
+            init_weight(self.M1, self.M2).astype(np.float32))
+        # hidden weight and bias (recurrent)
+        self.Whh = tf.Variable(
+            init_weight(self.M2, self.M2).astype(np.float32))
+        self.bh = tf.Variable(np.zeros(self.M2, dtype=np.float32))
+        # update gate weights
+        self.Wxz = tf.Variable(
+            init_weight(self.M1, self.M2).astype(np.float32))
+        self.Whz = tf.Variable(
+            init_weight(self.M2, self.M2).astype(np.float32))
+        self.bz = tf.Variable(np.zeros(self.M2, dtype=np.float32))
+        # reset gate weights
+        self.Wxr = tf.Variable(
+            init_weight(self.M1, self.M2).astype(np.float32))
+        self.Whr = tf.Variable(
+            init_weight(self.M2, self.M2).astype(np.float32))
+        self.br = tf.Variable(np.zeros(self.M2, dtype=np.float32))
+        # initial hidden repesentation
+        self.h0 = tf.Variable(np.zeros(self.M2, dtype=np.float32))
+        self.params = [self.Wxh, self.Whh, self.bh, self.h0, self.Wxz,
+                       self.Whz, self.bz, self.Wxr, self.Whr, self.br]
 
-        def recurrence(self, last, new):
-            # reshape recurrent inputs
-            last = tf.reshape(last, (1, self.M2))
-            new = tf.reshape(new, (1, -1))
-            # calculate gates
-            reset = tf.sigmoid(
-                tf.matmul(new, self.Wxr) + tf.matmul(last, self.Whr) + self.br)
-            update = tf.sigmoid(
-                tf.matmul(new, self.Wxz) + tf.matmul(last, self.Whz) + self.bz)
-            # update hidden representation
-            h_hat = tf.nn.relu(
-                tf.matmul(new, self.Wxh)
-                + (tf.matmul(reset*last, self.Whh) + self.bh))
-            hidden = h_hat*update + last*(1-update)
-            return tf.reshape(hidden, (self.M2,))
+    def recurrence(self, last, new):
+        # reshape recurrent inputs
+        last = tf.reshape(last, (1, self.M2))
+        new = tf.reshape(new, (1, -1))
+        # calculate gates
+        reset = tf.sigmoid(
+            tf.matmul(new, self.Wxr) + tf.matmul(last, self.Whr) + self.br)
+        update = tf.sigmoid(
+            tf.matmul(new, self.Wxz) + tf.matmul(last, self.Whz) + self.bz)
+        # update hidden representation
+        h_hat = tf.nn.relu(
+            tf.matmul(new, self.Wxh)
+            + (tf.matmul(reset*last, self.Whh) + self.bh))
+        hidden = h_hat*update + last*(1-update)
+        return tf.reshape(hidden, (self.M2,))
 
-        def scanner(self, X):
-            '''
-            The recurrent loop of this simple RNN layer. h0 is the "last" arg
-            for the first element of the input. We are initializing at zero.
-            '''
-            self.scan = tf.scan(
-                fn=self.recurrence,  # run this on each element of the input
-                elems=X,
-                initializer=self.h0,  # zeros
-            )
-            return self.scan
+    def scanner(self, X):
+        """
+        The recurrent loop of this RNN layer. h0 is the "last" arg
+        for the first element of the input. We are initializing at zero.
+        """
+        self.scan = tf.scan(
+            fn=self.recurrence,  # run this on each element of the input
+            elems=X,
+            initializer=self.h0,  # zeros
+        )
+        return self.scan
 
 
 class HiddenLayer(object):
-    '''
+    """
     Simple layer with optional non-linearity, and bias. For example, can be
     used to get logits by setting activation=None.
-    '''
+    """
     def __init__(self, M1, M2, bias=True, activation=tf.nn.relu):
         self.M1 = M1  # input size
         self.M2 = M2  # hidden layer size

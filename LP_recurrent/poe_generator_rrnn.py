@@ -23,50 +23,50 @@ def init_weight(M1, M2):
 
 
 class RRNNunit(object):
-        def __init__(self, M1, M2):
-            self.M1 = M1  # input size
-            self.M2 = M2  # hidden layer size
-            self.build()
+    def __init__(self, M1, M2):
+        self.M1 = M1  # input size
+        self.M2 = M2  # hidden layer size
+        self.build()
 
-        def build(self):
-            # input weight
-            self.Wx = tf.Variable(
-                init_weight(self.M1, self.M2).astype(np.float32))
-            # hidden weight
-            self.Wh = tf.Variable(
-                init_weight(self.M2, self.M2).astype(np.float32))
-            # hidden bias
-            self.bh = tf.Variable(np.zeros(self.M2, dtype=np.float32))
-            # rate matrix
-            self.z = tf.Variable(np.ones(self.M2, dtype=np.float32))
-            # initial hidden repesentation
-            self.h0 = tf.Variable(np.zeros(self.M2, dtype=np.float32))
-            self.params = [self.Wx, self.Wh, self.bh, self.h0, self.z]
+    def build(self):
+        # input weight
+        self.Wx = tf.Variable(
+            init_weight(self.M1, self.M2).astype(np.float32))
+        # hidden weight
+        self.Wh = tf.Variable(
+            init_weight(self.M2, self.M2).astype(np.float32))
+        # hidden bias
+        self.bh = tf.Variable(np.zeros(self.M2, dtype=np.float32))
+        # rate matrix
+        self.z = tf.Variable(np.ones(self.M2, dtype=np.float32))
+        # initial hidden repesentation
+        self.h0 = tf.Variable(np.zeros(self.M2, dtype=np.float32))
+        self.params = [self.Wx, self.Wh, self.bh, self.h0, self.z]
 
-        def forward(self, X):
-            'Multiply X with input weights.'
-            return tf.matmul(X, self.Wx)
+    def forward(self, X):
+        'Multiply X with input weights.'
+        return tf.matmul(X, self.Wx)
 
-        def recurrence(self, last, new):
-            # reshape recurrent input, since output is shape (M2,), and new
-            # has the shape of (1, M2), since it is a single timestep with M2
-            # dimensions (X already multiplied with Wx)
-            last = tf.reshape(last, (1, self.M2))
-            h_hat = tf.nn.relu(new + (tf.matmul(last, self.Wh) + self.bh))
-            hidden = h_hat*self.z + last*(1-self.z)
-            return tf.reshape(hidden, (self.M2,))
+    def recurrence(self, last, new):
+        # reshape recurrent input, since output is shape (M2,), and new
+        # has the shape of (1, M2), since it is a single timestep with M2
+        # dimensions (X already multiplied with Wx)
+        last = tf.reshape(last, (1, self.M2))
+        h_hat = tf.nn.relu(new + (tf.matmul(last, self.Wh) + self.bh))
+        hidden = h_hat*self.z + last*(1-self.z)
+        return tf.reshape(hidden, (self.M2,))
 
-        def scanner(self, X):
-            '''
-            The recurrent loop of this simple RNN layer. h0 is the "last" arg
-            for the first element of the input. We are initializing at zero.
-            '''
-            self.scan = tf.scan(
-                fn=self.recurrence,  # run this on each element of the input
-                elems=self.forward(X),  # X @ Wx (input weights)
-                initializer=self.h0,  # zeros
-            )
-            return self.scan
+    def scanner(self, X):
+        '''
+        The recurrent loop of this simple RNN layer. h0 is the "last" arg
+        for the first element of the input. We are initializing at zero.
+        '''
+        self.scan = tf.scan(
+            fn=self.recurrence,  # run this on each element of the input
+            elems=self.forward(X),  # X @ Wx (input weights)
+            initializer=self.h0,  # zeros
+        )
+        return self.scan
 
 
 class HiddenLayer(object):
