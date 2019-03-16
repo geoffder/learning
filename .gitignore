@@ -39,3 +39,7 @@ LP_convolution/facial_recognition/fer20130\.csv
 LP_convolution/facial_recognition/fer2013\.csv
 
 wordnet/
+
+transcriptions/word2idx\.json
+
+transcriptions/GRU_yogis/
