@@ -9,7 +9,7 @@ from os import getcwd
 
 from sklearn.utils import shuffle
 from sklearn.manifold import TSNE
-# from sklearn.decomposition import PCA
+from sklearn.decomposition import PCA
 
 
 """
@@ -25,6 +25,97 @@ def init_weight(M1, M2):
     not work until I remembered to divide the randn weights like so.
     '''
     return np.random.randn(M1, M2) / np.sqrt(M1 + M2)
+
+
+class LSTM(object):
+    "Class Definition of Long Short-Term Memory Layer in Tensorflow"
+    def __init__(self, M1, M2):
+        self.M1 = M1  # input size
+        self.M2 = M2  # hidden layer size
+        self.build()
+
+    def build(self):
+        # input gate weights (and bias)
+        self.Wxi = tf.Variable(
+            init_weight(self.M1, self.M2).astype(np.float32))
+        self.Whi = tf.Variable(
+            init_weight(self.M2, self.M2).astype(np.float32))
+        self.Wci = tf.Variable(
+            init_weight(self.M2, self.M2).astype(np.float32))
+        self.bi = tf.Variable(np.zeros(self.M2, dtype=np.float32))
+        # forget gate weights (and bias)
+        self.Wxf = tf.Variable(
+            init_weight(self.M1, self.M2).astype(np.float32))
+        self.Whf = tf.Variable(
+            init_weight(self.M2, self.M2).astype(np.float32))
+        self.Wcf = tf.Variable(
+            init_weight(self.M2, self.M2).astype(np.float32))
+        self.bf = tf.Variable(np.zeros(self.M2, dtype=np.float32))
+        # memory cell weights (and bias)
+        self.Wxc = tf.Variable(
+            init_weight(self.M1, self.M2).astype(np.float32))
+        self.Whc = tf.Variable(
+            init_weight(self.M2, self.M2).astype(np.float32))
+        self.bc = tf.Variable(np.zeros(self.M2, dtype=np.float32))
+        # output gate weights (and bias)
+        self.Wxo = tf.Variable(
+            init_weight(self.M1, self.M2).astype(np.float32))
+        self.Who = tf.Variable(
+            init_weight(self.M2, self.M2).astype(np.float32))
+        self.Wco = tf.Variable(
+            init_weight(self.M2, self.M2).astype(np.float32))
+        self.bo = tf.Variable(np.zeros(self.M2, dtype=np.float32))
+        # initial memory cell and hidden repesentation
+        self.c0 = tf.Variable(np.zeros(self.M2, dtype=np.float32))
+        self.h0 = tf.Variable(np.zeros(self.M2, dtype=np.float32))
+        # param collection
+        self.params = [
+            self.Wxi, self.Whi, self.Wci, self.bi,
+            self.Wxf, self.Whf, self.Wcf, self.bf,
+            self.Wxc, self.Whc, self.bc,
+            self.Wxo, self.Who, self.Wco, self.bo,
+            self.h0
+        ]
+
+    def recurrence(self, last, new):
+        # reshape recurrent inputs
+        last_h, last_c = last
+        last_h = tf.reshape(last_h, (1, self.M2))
+        last_c = tf.reshape(last_c, (1, self.M2))
+        new = tf.reshape(new, (1, -1))
+        # calculate input and forget gates
+        input = tf.sigmoid(
+            tf.matmul(new, self.Wxi) + tf.matmul(last_h, self.Whi)
+            + tf.matmul(last_c, self.Wci) + self.bi)
+        forget = tf.sigmoid(
+            tf.matmul(new, self.Wxf) + tf.matmul(last_h, self.Whf)
+            + tf.matmul(last_c, self.Wcf) + self.bf)
+        # calculate new memory cell value using input and forget gates
+        c_hat = tf.tanh(tf.matmul(new, self.Wxc) + tf.matmul(last_h, self.Whc)
+                        + self.bc)
+        cell = forget*last_c + input*c_hat
+        # calculate output gate
+        output = tf.sigmoid(
+            tf.matmul(new, self.Wxo) + tf.matmul(last_h, self.Who)
+            + tf.matmul(cell, self.Wco) + self.bo)
+        # update hidden representation
+        hidden = output*tf.tanh(cell)
+        return (tf.reshape(hidden, (self.M2,)), tf.reshape(cell, (self.M2,)))
+
+    def scanner(self, X):
+        """
+        The recurrent loop of this RNN layer. Tuple of h0 and c0, as we
+        will be returning both a hidden representation value [h(t)] and
+        a memory cell value [c(t)] with each loop. We don't want the memory
+        cell outside of the scope of this layer, so we return only the
+        first element of the output tuple, h0.
+        """
+        self.scan = tf.scan(
+            fn=self.recurrence,  # run this on each element of the input
+            elems=X,
+            initializer=(self.h0, self.c0),  # zeros
+        )
+        return self.scan[0]  # only want hidden for output (ignore cell)
 
 
 class GRU(object):
@@ -127,7 +218,8 @@ class Embedder(object):
     def build(self):
         # layers and parameters
         self.embed = HiddenLayer(self.V, self.D, bias=False, activation=None)
-        self.rnnUnit = GRU(self.D, self.M)
+        # self.rnnUnit = GRU(self.D, self.M)
+        self.rnnUnit = LSTM(self.D, self.M)
         self.logistic = HiddenLayer(self.M, self.V, activation=None)
         self.layers = [self.embed, self.rnnUnit, self.logistic]
         self.params = [p for layer in self.layers for p in layer.params]
@@ -151,16 +243,11 @@ class Embedder(object):
         self.predict_op = tf.argmax(self.logits, axis=1)
 
     def fit(self, sentences, word2idx, lr=1e-2, epochs=100, show_fig=False,
-            save_model=False, load_model=False):
+            save_model=False, load_model=False, save_embeddings=False):
 
         N = len(sentences)
-        # V = len(word2idx)
 
-        # this? (like the poetry)
         X, Y = self.vector_matrices(sentences, word2idx)
-        # or this? (without START and END tokens)
-        # X = self.one_hot_sentences(sentences, V)
-        # Y = sentences
 
         self.train_op = tf.train.AdamOptimizer(lr).minimize(self.cost)
 
@@ -194,6 +281,9 @@ class Embedder(object):
             if save_model:
                 save_path = self.saver.save(sess, self.path+'model.ckpt')
                 print("Model saved in path: %s" % save_path)
+            if save_embeddings:
+                embeddings = sess.run(self.embed.W)
+                np.save(self.path+'word_embeddings', embeddings)
 
         if show_fig:
             fig, axes = plt.subplots(1, 2)
@@ -223,13 +313,6 @@ class Embedder(object):
         X = [np.concatenate([startVec, sample], axis=0) for sample in hot_mats]
         Y = [np.concatenate([s, [word2idx['END']]]) for s in sentences]
         return X, Y
-
-    def get_embeddings(self):
-        init = tf.global_variables_initializer()
-        with tf.Session() as sess:
-            sess.run(init)
-            We = sess.run(self.embed.W)
-        return We
 
 
 def my_tokenizer(s):
@@ -277,10 +360,6 @@ def process(lines):
     return all_lines, all_tokens, word_index_map, index_word_map
 
 
-def value(elem):
-    return elem
-
-
 def display_embeddings(folder=''):
     # load saved embeddings and word2idx dict
     embeddings = np.load(folder+'word_embeddings.npy')
@@ -290,8 +369,15 @@ def display_embeddings(folder=''):
 
     # embed with t-SNE into 2 dimensions
     reduced = TSNE(n_components=2).fit_transform(embeddings)
+
     # reduce dimensionality with PCA
-    # reduced = PCA().fit_transform(embeddings)
+    # pca = PCA()
+    # reduced = pca.fit_transform(embeddings)
+    # cumulative = np.cumsum(pca.explained_variance_ratio_)
+    # plt.plot(cumulative)
+    # plt.title('Cumulative Information')
+    # plt.xlabel('dimensions')
+    # plt.ylabel('variance explained')
 
     # plot the dimensional reduction of the data
     fig, ax = plt.subplots(1)
@@ -326,21 +412,17 @@ def train_embeddings():
     N = len(sequences)  # number of lines of tokens
     V = len(word2idx)  # len returns number of pairs in dict
     print('Number of Sentences:', N, 'Vocabulary size:', V)
-    D = 50  # embedding dimensions
-    nodes = 50  # hidden nodes
+    D = 100  # 50  # embedding dimensions
+    nodes = 100  # 50  # hidden nodes
 
     rnn = Embedder(V, D, nodes, folder='GRU_yogis')
-    rnn.fit(sequences, word2idx, lr=1e-2, epochs=10, show_fig=False,
-            save_model=True, load_model=True)
-
-    # save embeddings and word-idx dicts
-    embeddings = rnn.get_embeddings()
-    np.save(rnn.path+'word_embeddings', embeddings)
+    rnn.fit(sequences, word2idx, lr=1e-3, epochs=5, show_fig=False,
+            save_model=False, load_model=True, save_embeddings=True)
 
     with open(rnn.path+'word2idx.json', 'w') as fp:
         json.dump(word2idx, fp)
 
 
 if __name__ == '__main__':
-    train_embeddings()
-    # display_embeddings(folder='GRU_yogis/')
+    # train_embeddings()
+    display_embeddings(folder='GRU_yogis/')

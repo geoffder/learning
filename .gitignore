@@ -43,3 +43,5 @@ wordnet/
 transcriptions/word2idx\.json
 
 transcriptions/GRU_yogis/
+
+transcriptions/LSTM_yogis_D100_cr60/
