@@ -95,6 +95,12 @@ def play_to_win(n_trials=2000, bandit_probs=[.2, .5, .75], strategy='Bayesian',
         elif strategy == 'Bayesian':
             # draw from beta distributions to choose bandit to pull
             best_bandit = np.argmax([b.betaSample() for b in bandits])
+        elif strategy == 'EpsDecay':
+            # epsilon-greedy, but with decaying epsilon
+            if np.random.random() > 1/(i+.000001):
+                best_bandit = np.argmax([bandito.mu for bandito in bandits])
+            else:
+                best_bandit = np.random.choice(np.arange(len(bandits)))
 
         reward += bandits[best_bandit].pull()
 
@@ -110,4 +116,4 @@ def play_to_win(n_trials=2000, bandit_probs=[.2, .5, .75], strategy='Bayesian',
 
 if __name__ == '__main__':
     play_to_win(n_trials=10000, bandit_probs=[.2, .5, .75],
-                strategy='UCB1', epsilon=.05, show_fig=True)
+                strategy='EpsDecay', epsilon=.05, show_fig=True)
