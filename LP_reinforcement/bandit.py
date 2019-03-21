@@ -84,11 +84,14 @@ def play_to_win(n_trials=2000, bandit_probs=[.2, .5, .75], strategy='Bayesian',
             # all greed, all the time
             best_bandit = np.argmax([bandito.mu for bandito in bandits])
         elif strategy == 'UCB1':
-            # epsilon is dynamic adjustment of sample mean.
-            # epsilon = sqrt(ln(total_N)/option_N)
-            best_bandit = np.argmax(
-                [b.mu + np.sqrt(2*np.log(i+1)/(b.N+1))
-                 for b in bandits])
+            if not i:  # first trial, no data yet
+                best_bandit = np.random.choice(np.arange(len(bandits)))
+            else:
+                # epsilon is dynamic adjustment of sample mean.
+                # epsilon = sqrt(ln(total_N)/option_N)
+                best_bandit = np.argmax(
+                    [b.mu + np.sqrt(2*np.log(i)/(b.N+.00001))
+                     for b in bandits])
         elif strategy == 'Bayesian':
             # draw from beta distributions to choose bandit to pull
             best_bandit = np.argmax([b.betaSample() for b in bandits])
@@ -107,4 +110,4 @@ def play_to_win(n_trials=2000, bandit_probs=[.2, .5, .75], strategy='Bayesian',
 
 if __name__ == '__main__':
     play_to_win(n_trials=10000, bandit_probs=[.2, .5, .75],
-                strategy='Optimistic', epsilon=.05, show_fig=True)
+                strategy='UCB1', epsilon=.05, show_fig=True)
