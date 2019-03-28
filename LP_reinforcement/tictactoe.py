@@ -57,7 +57,7 @@ class Player(object):
         for idx in empty_spots:
             placement = state.copy()
             placement[idx] = self.marker
-            hsh = hash(bytes(placement))
+            hsh = hash(placement.tobytes())
             if hsh not in self.values:
                 self.values[hsh] = .5
             options.append(hsh)
@@ -69,7 +69,7 @@ class Player(object):
             action_idx = np.random.choice(np.arange(len(options)))
 
         # pairs of state (s) and next state (s')
-        self.game_history.append([hash(bytes(state)), options[action_idx]])
+        self.game_history.append([hash(state.tobytes()), options[action_idx]])
 
         return empty_spots[action_idx]  # index to place marker
 
