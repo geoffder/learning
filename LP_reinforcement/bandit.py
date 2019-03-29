@@ -116,4 +116,4 @@ def play_to_win(n_trials=2000, bandit_probs=[.2, .5, .75], strategy='Bayesian',
 
 if __name__ == '__main__':
     play_to_win(n_trials=10000, bandit_probs=[.2, .5, .75],
-                strategy='EpsDecay', epsilon=.05, show_fig=True)
+                strategy='Bayesian', epsilon=.05, show_fig=True)

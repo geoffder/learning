@@ -52,9 +52,10 @@ class TicTacToe(object):
 
 class Player(object):
     "Reinforcement learning agent."
-    def __init__(self, number, alpha):
+    def __init__(self, number, alpha, dumb=False):
         self.number = number  # 1 (X) or 2 (O)
         self.alpha = alpha
+        self.dumb = dumb  # toggles learning
         self.marker = int(-1) if number == 1 else int(1)
         self.values = {}
         self.game_history = []
@@ -79,7 +80,7 @@ class Player(object):
 
         # epsilon-greedy, but with decaying epsilon.
         # Decided to try episodes/2 in denom to slow the decay.
-        if np.random.random() > 1/(self.episodes/2+.000001):
+        if np.random.random() > 1/(self.episodes/2+.000001) and not self.dumb:
             action_idx = np.argmax([self.values[opt] for opt in options])
         else:
             action_idx = np.random.choice(np.arange(len(options)))
@@ -100,13 +101,14 @@ class Player(object):
         the game result.
         """
         self.record.append(reward)
-        last_value = reward
-        for s, s_p in reversed(self.game_history):
-            self.values[s_p] = self.values[s_p] + self.alpha*(
-                                    last_value - self.values[s_p])
-            self.values[s] = self.values[s] + self.alpha*(
-                                    self.values[s_p] - self.values[s])
-            last_value = self.values[s]
+        if not self.dumb:
+            last_value = reward
+            for s, s_p in reversed(self.game_history):
+                self.values[s_p] = self.values[s_p] + self.alpha*(
+                                        last_value - self.values[s_p])
+                self.values[s] = self.values[s] + self.alpha*(
+                                        self.values[s_p] - self.values[s])
+                last_value = self.values[s]
 
         self.game_history = []
         self.episodes += 1
@@ -135,8 +137,8 @@ def play_game(p1, p2, env, watch=False):
 
 if __name__ == '__main__':
     env = TicTacToe()
-    player1 = Player(1, .01)
-    player2 = Player(2, .01)
+    player1 = Player(1, .01, dumb=False)
+    player2 = Player(2, .01, dumb=True)
     for i in range(100000):
         play_game(player1, player2, env)
 
