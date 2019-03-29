@@ -75,20 +75,22 @@ class Player(object):
             placement[idx] = self.marker
             hsh = hash(placement.tobytes())
             if hsh not in self.values:
-                self.values[hsh] = .5
+                self.values[hsh] = {'m': .5, 'lamb': 1}
             options.append(hsh)
 
-        # epsilon-greedy, but with decaying epsilon.
-        # Decided to try episodes/2 in denom to slow the decay.
-        if np.random.random() > 1/(self.episodes/2+.000001) and not self.dumb:
-            action_idx = np.argmax([self.values[opt] for opt in options])
+        # gaussian thompson sampling
+        if not self.dumb:
+            action_idx = np.argmax(
+                [np.random.randn()/np.sqrt(self.values[opt]['lamb'])
+                 + self.values[opt]['m'] for opt in options]
+            )
         else:
             action_idx = np.random.choice(np.arange(len(options)))
 
         # also add current state to value dict
         hsh = hash(state.tobytes())
         if hsh not in self.values:
-            self.values[hsh] = .5
+            self.values[hsh] = {'m': .5, 'lamb': 1}
 
         # pairs of state (s) and next state (s')
         self.game_history.append([hsh, options[action_idx]])
@@ -103,12 +105,16 @@ class Player(object):
         self.record.append(reward)
         if not self.dumb:
             last_value = reward
-            for s, s_p in reversed(self.game_history):
-                self.values[s_p] = self.values[s_p] + self.alpha*(
-                                    last_value - self.values[s_p])
-                self.values[s] = self.values[s] + self.alpha*(
-                                        self.values[s_p] - self.values[s])
-                last_value = self.values[s]
+            for s, s_p in self.game_history:
+                self.values[s_p]['lamb'] += 1
+                self.values[s_p]['m'] = self.values[s_p]['m'] + self.alpha*(
+                    last_value - self.values[s_p]['m'])
+
+                self.values[s]['m'] = self.values[s]['m'] + self.alpha*(
+                    self.values[s_p]['m'] - self.values[s]['m'])
+                self.values[s]['lamb'] += 1
+
+                last_value = self.values[s]['m']
 
         self.game_history = []
         self.episodes += 1
