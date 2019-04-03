@@ -25,14 +25,14 @@ class Grid(object):
         self.i, self.j = start
 
     def move(self, action):
-        "Move Up, Down, Left, or Right (if legal)"
+        "Move Up, Down, Left, or Right (if legal, otherwise do nothing)"
         self.last_pos = (self.i, self.j)  # for undo-ing moves
 
         if action in self.actions.get(self.last_pos, []):
             self.i += self.moves[action][0]
             self.j += self.moves[action][1]
 
-        return self.rewards.get((self.i, self.j), 0)  # return 0 if nothing
+        return self.rewards.get((self.i, self.j), 0)  # return 0 if no entry
 
     def undo_move(self):
         self.i, self.j = self.last_pos

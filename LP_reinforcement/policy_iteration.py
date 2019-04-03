@@ -22,6 +22,7 @@ def policy_evaluation(policy, V, grid, gamma=.9):
 
     return V
 
+
 if __name__ == '__main__':
     the_grid = standard_grid(step_cost=-0.1)
     possible_actions = list(the_grid.moves.keys())
