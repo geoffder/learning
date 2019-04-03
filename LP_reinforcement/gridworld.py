@@ -10,38 +10,38 @@ agents that will interact with this environment.
 class Grid(object):
 
     def __init__(self, dims, walls, terminals, start, step_cost=0):
-        # basic layout
-        self.width, self.height = dims
+        # basic layout and rules
+        self.height, self.width = dims
         self.walls = set(walls)  # list of coordinate tuples converted to set
+        self.moves = {'U': (-1, 0), 'D': (1, 0), 'L': (0, -1), 'R': (0, 1)}
         # states and actions
         self.terminals = set(terminals.keys())  # terminal positions
         self.rewards = terminals  # rewards initialized with terminal states
         self.step_cost = step_cost  # non-terminal spots are penalized
         self.actions = {}  # dict to be filled {(i, j): [actions]}
-        # agent start position
+        self.enumerate_states()  # fill action and reward dicts
+        # agent (start) position
         self.last_pos = start
         self.i, self.j = start
 
     def move(self, action):
-        "Move Up, Down, Right, or Left (if legal)"
-        self.last_pos = (self.i, self.j)
-        if action == "U" and self.i-1 > 0:
-            self.i -= 1
-        elif action == "D" and self.i+1 < self.height:
-            self.i += 1
-        elif action == "R" and self.j+1 < self.width:
-            self.j += 1
-        elif action == "L" and self.j-1 > 0:
-            self.j -= 1
+        "Move Up, Down, Left, or Right (if legal)"
+        self.last_pos = (self.i, self.j)  # for undo-ing moves
 
-        # bounce back if moved in to a wall
-        if (self.i, self.j) in self.walls:
-            self.i, self.j = self.last_pos
+        if action in self.actions.get(self.last_pos, []):
+            self.i += self.moves[action][0]
+            self.j += self.moves[action][1]
 
         return self.rewards.get((self.i, self.j), 0)  # return 0 if nothing
 
     def undo_move(self):
         self.i, self.j = self.last_pos
+
+    def set_state(self, s):
+        self.i, self.j = s
+
+    def get_state(self):
+        return (self.i, self.j)
 
     def is_terminal(self, s):
         "Check if given state is terminal."
@@ -51,19 +51,47 @@ class Grid(object):
         "Check if state agent is in is terminal (gameover, man.)"
         return (self.i, self.j) in self.terminals
 
+    def enumerate_states(self):
+        """
+        Fill up rewards and action dicts for all legal states on the board.
+        Walls will not have reward or action entries, as they can never be
+        occupied, and terminal states will not have actions.
+        """
+        no_moves = self.terminals.union(self.walls)
+        for i in range(self.height):
+            for j in range(self.width):
+                if (i, j) not in no_moves:
+                    self.rewards[(i, j)] = self.step_cost
+                    self.actions[(i, j)] = self.possible_moves(i, j)
+
+    def possible_moves(self, i, j):
+        "Return list of legal moves from given grid position."
+        legal = []
+        for act in ['U', 'D', 'L', 'R']:
+            new_i = i + self.moves[act][0]
+            new_j = j + self.moves[act][1]
+            if (new_i, new_j) not in self.walls:
+                if new_i >= 0 and new_j >= 0:
+                    if new_i < self.height and new_j < self.width:
+                        legal.append(act)
+        return legal
+
     def all_states(self):
-        """
-        Not sure if I will be using this as LP does yet, including so I
-        remember in case I'm not sure how I want to implement.
-        """
-        return set(self.actions.keys() + self.rewards.keys())
+        "Return set of all legal states on the board."
+        return set(list(self.actions.keys()) + list(self.rewards.keys()))
 
 
-def standard_grid():
+def standard_grid(step_cost=0):
     # .  .  .  1
     # .  x  . -1
     # s  .  .  .
     terminals = {(0, 3): 1, (1, 3): -1}
     walls = [(1, 1)]
-    the_grid = Grid((3, 4), walls, terminals, (2, 0), neg_mode=False)
+    the_grid = Grid((3, 4), walls, terminals, (2, 0), step_cost=step_cost)
     return the_grid
+
+
+class Robot(object):
+
+    def __init__(self):
+        pass
