@@ -6,8 +6,8 @@ convergence_threshold = 10e-4
 
 def display_values(values, grid):
     """
-    (Courtesy of LP) Printing out the values of each place on the grid
-    according to a certain policy.
+    Printing out the values of each place on the grid according to a certain
+    policy.
     """
     for i in range(grid.height):
         print("-" + "-------"*grid.width)
@@ -25,7 +25,7 @@ def display_values(values, grid):
 
 def display_policy(policy, grid):
     """
-    (Courtesy of LP) Printing out the actions that will be taken at each
+    Printing out the actions that will be taken at each
     place on the grid, according to the policy.
     """
     for i in range(grid.height):
