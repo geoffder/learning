@@ -80,6 +80,23 @@ class Grid(object):
         "Return set of all legal states on the board."
         return set(list(self.actions.keys()) + list(self.rewards.keys()))
 
+    def display_rewards(self):
+        """
+        Print out the rewards for transitioning to each position on the grid.
+        """
+        for i in range(self.height):
+            print("-" + "-------"*self.width)
+            for j in range(self.width):
+                if not j:
+                    print("|", end="")  # begin row with vertical line
+                v = self.rewards.get((i, j), 0)
+                if v >= 0:
+                    print(" %.2f |" % v, end="")
+                else:
+                    print("%.2f |" % v, end="")  # -ve sign takes extra space
+            print("")  # new line
+        print("-" + "-------"*self.width, end='\n\n')
+
 
 def standard_grid(step_cost=0):
     # .  .  .  1
