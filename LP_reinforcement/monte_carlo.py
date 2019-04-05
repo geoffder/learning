@@ -101,6 +101,8 @@ class MonteCarloPolicy(object):
                     else:
                         # use exponential moving average to estimate Q
                         self.Q[(s, a)] = (1 - self.alpha)*old_q + self.alpha*g
+                        # or equivalently
+                        # self.Q[(s, a)] = old_q + self.alpha*(g - old_q)
             visited.clear()  # wipe for next episode
 
     def update(self):
@@ -118,7 +120,7 @@ class MonteCarloPolicy(object):
     def improve(self, grid, first_visit=True):
         iterations = 0
         changed = True
-        while changed or (iterations < 750 and grid.windy):
+        while changed or (iterations < 1000 and grid.windy):
             self.evaluation(grid, 1, first_visit=first_visit)
             changed = self.update()
             iterations += 1
@@ -136,7 +138,7 @@ if __name__ == '__main__':
     policy = MonteCarloPolicy(alpha=.9, gamma=.9, sample_mean=True)
 
     # run until policy is unchanging (if windy, run a minimum number of times)
-    iterations = policy.improve(the_grid, first_visit=False)
+    iterations = policy.improve(the_grid, first_visit=True)
     policy.calculate_state_values()  # calculate values of each state from Q
 
     print("Learned values (after %d iterations):" % iterations)
