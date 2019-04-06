@@ -5,7 +5,10 @@ ALL_ACTIONS = ['U', 'D', 'L', 'R']
 
 
 class MonteCarloPolicy(object):
-
+    """
+    Reinforcement learning agent using Monte Carlo to learn the value function
+    (evaluation) and dictate policy (improvement) for Gridworld.
+    """
     def __init__(self, alpha=.1, gamma=.9, epsilon=.1, sample_mean=False):
         # state -> action policy, instead of initializing, I'll take a
         # discovering states as I go approach

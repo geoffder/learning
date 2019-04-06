@@ -5,7 +5,10 @@ ALL_ACTIONS = ['U', 'D', 'L', 'R']
 
 
 class TemporalDifferencePolicy(object):
-
+    """
+    Reinforcement learning agent using Temporal Difference Learning to learn
+    the value function and dictate policy for Gridworld.
+    """
     def __init__(self, grid, alpha=.1, gamma=.9, epsilon=.1, eps_decay=True):
         self.grid = grid
         # state -> action policy, instead of initializing, I'll take a
