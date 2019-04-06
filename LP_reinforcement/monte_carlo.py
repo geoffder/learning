@@ -6,7 +6,7 @@ ALL_ACTIONS = ['U', 'D', 'L', 'R']
 
 class MonteCarloPolicy(object):
 
-    def __init__(self, alpha=.9, gamma=.9, epsilon=.1, sample_mean=False):
+    def __init__(self, alpha=.1, gamma=.9, epsilon=.1, sample_mean=False):
         # state -> action policy, instead of initializing, I'll take a
         # discovering states as I go approach
         self.actions = {}
@@ -30,7 +30,7 @@ class MonteCarloPolicy(object):
                     print("|", end="")  # begin row with vertical line
                 v = self.V.get((i, j), 0)
                 if np.isnan(v):
-                    print("     |", end="")
+                    print("      |", end="")
                 elif v >= 0:
                     print(" %.2f |" % v, end="")
                 else:
@@ -135,7 +135,7 @@ if __name__ == '__main__':
     the_grid.display_rewards()
 
     # create MC policy object. Action policy and Values not initialized
-    policy = MonteCarloPolicy(alpha=.9, gamma=.9, sample_mean=True)
+    policy = MonteCarloPolicy(alpha=.1, gamma=.9, sample_mean=False)
 
     # run until policy is unchanging (if windy, run a minimum number of times)
     iterations = policy.improve(the_grid, first_visit=True)
