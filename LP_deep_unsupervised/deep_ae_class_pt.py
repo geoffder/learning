@@ -195,9 +195,9 @@ def main(load=False):
     # hidden_layer_sizes = [1000, 800, 500, 300, 100, 10, 2]
     # hidden_layer_sizes = [500, 300, 100, 10, 2]
     # hidden_layer_sizes = [500, 300, 2]
-    # hidden_layer_sizes = [1000, 500, 250, 2]
+    hidden_layer_sizes = [1000, 500, 250, 2]
     # hidden_layer_sizes = [1000, 500, 300, 100, 10, 3]
-    hidden_layer_sizes = [1000, 500, 250, 3]
+    # hidden_layer_sizes = [1000, 500, 250, 3]
     # hidden_layer_sizes = [500, 300, 3]
 
     DAE = DeepAutoEncoder(hidden_layer_sizes)
@@ -242,5 +242,5 @@ if __name__ == '__main__':
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     torch.backends.cudnn.benchmark = True
 
-    main()
-    # display_hidden()
+    # main()
+    display_hidden()
