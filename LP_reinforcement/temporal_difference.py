@@ -105,7 +105,12 @@ class TemporalDifferencePolicy(object):
 
         # update state-action value
         old_q = self.Q.get((s1, a1), np.random.random())
-        self.Q[(s1, a1)] = old_q + lr*(r + self.gamma*self.Q[(s2, a2)] - old_q)
+        # forgot to change this before, must take best value of Q for the
+        # next state for Q learning (even if not the action performed)!
+        next_q = np.max([self.Q.get((s2, act), 0) for act in ALL_ACTIONS])
+        self.Q[(s1, a1)] = old_q + lr*(r + self.gamma*next_q - old_q)
+        # self.Q[(s1, a1)] = old_q + lr*(
+        #     r + self.gamma*self.Q[(s2, a2)] - old_q)
 
         # update policy
         options = [self.Q.get((s1, act), 0) for act in ALL_ACTIONS]
