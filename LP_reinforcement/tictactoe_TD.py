@@ -93,6 +93,32 @@ class Player(object):
         self.last_s, self.last_a, self.last_options = None, None, None
 
 
+class Human(object):
+
+    def __init__(self, number):
+        self.number = number  # 1 (X) or 2 (O)
+        self.marker = int(-1) if number == 1 else int(1)
+
+    def action(self):
+        # show human the board
+        env.display()
+        # get action (prompt)
+        while True:
+            user_in = input("Input coordinates delimited by comma: ")
+            coords = tuple([int(ele) for ele in user_in.split(',')])
+            state = env.board
+            options = [tuple(loc) for loc in np.argwhere(state == 0)]
+            if coords in options:
+                env.board[(coords)] = self.marker
+                env.terminator()
+                break
+            else:
+                print("Try again...")
+
+    def new_game(self):
+        pass
+
+
 class TemporalDifferencePolicy(object):
     """
     Reinforcement learning agent using Temporal Difference Learning to learn
@@ -228,6 +254,37 @@ def play_game(p1, p2, watch=False):
     env.reset()  # clear board
 
 
+def wargames(human, machine):
+    print("Beginning War Against the Machine...")
+    mark = 'X' if human.marker == -1 else 'O'
+    print("Human, you are '%s'" % mark)
+    machine.greed = True
+    while True:
+        print("\nFight!")
+        play_order = shuffle([human, machine])
+        for player in play_order:
+            player.new_game()
+        while(not env.gameover):
+            for i, player in enumerate(play_order):
+                player.action()  # board printed and input prompted for human
+                if env.gameover:
+                    break
+        env.display()
+        if env.winner == human.marker:
+            result = "You win!"
+        elif env.winner == machine.marker:
+            result = "You lose!"
+        else:
+            result = "Stalemate!"
+        print("Game Over! Man. %s" % result, end="\n\n")
+        env.reset()  # clear board
+
+        again = input("Play again? y or n: \n")
+        if again.lower() == 'n':
+            break
+
+
+
 if __name__ == '__main__':
     env = TicTacToe()  # this is global
     SARSA = False
@@ -290,3 +347,6 @@ if __name__ == '__main__':
     # for i in range(5):
     #     print('Trained vs Dumb Game %d:' % i)
     #     play_game(player1, player2, watch=True)
+
+    guy = Human(2)
+    wargames(guy, player1)
