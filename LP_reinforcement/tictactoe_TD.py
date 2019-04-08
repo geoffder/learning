@@ -284,7 +284,6 @@ def wargames(human, machine):
             break
 
 
-
 if __name__ == '__main__':
     env = TicTacToe()  # this is global
     SARSA = False
