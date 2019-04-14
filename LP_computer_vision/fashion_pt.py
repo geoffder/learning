@@ -163,7 +163,7 @@ class CNN(nn.Module):
             axes[1].plot(test_accs, label='validation')
             axes[1].set_xlabel('Epoch')
             axes[1].set_ylabel('Accuracy')
-            fig.legend()
+            plt.legend()
             fig.tight_layout()
             plt.show()
 
