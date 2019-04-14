@@ -13,7 +13,7 @@ torch.backends.cudnn.benchmark = True
 
 
 class Flatten(nn.Module):
-    'Layer that flattens extra-dimensional input to create an NxD matrix'
+    "Layer that flattens extra-dimensional input to create an NxD matrix"
     def __init__(self):
         super(Flatten, self).__init__()
 
@@ -23,7 +23,11 @@ class Flatten(nn.Module):
 
 
 class CNN(nn.Module):
-
+    """
+    Simple convolutional network with flexible number (and sizes) of layers.
+    2D convolutional layers preceding a set of fully-connected dense layers,
+    ending in logistic regression to classify inputs into K classes.
+    """
     def __init__(self, dims, K, conv_layer_shapes, pool_szs,
                  hidden_layer_sizes, p_drop, batch_mu=.1, epsilon=1e-4):
         super(CNN, self).__init__()
@@ -251,10 +255,10 @@ def conv_setup_1():
 def conv_setup_2():
     convnet = CNN(
         [28, 28], 10,  # input dimesions and number of output classes
-        [[5, 5, 1, 20], [5, 5, 20, 40], [5, 5, 40, 60]],  # conv layers
-        [2, 2, 2],  # max pool sizes/strides
+        [[5, 5, 1, 30], [3, 3, 30, 60]],  # conv layers
+        [2, 2],  # max pool sizes/strides
         [1000, 500, 250, 100],  # fully connected layers
-        [.2, .5, .5, .5, .5, .5, .5, .5],  # dropout rates
+        [.2, .5, .5, .5, .5, .5, .5],  # dropout rates (last is pre-logistic)
     )
     return convnet
 
@@ -263,8 +267,8 @@ def main():
     X, T = loadAndProcess()
     Xtrain, Ttrain, Xtest, Ttest = trainTestSplit(X, T, ratio=.8)
     del X, T  # free up memory
-    convnet = conv_setup_1()
-    convnet.fit(Xtrain, Ttrain, Xtest, Ttest, lr=1e-3, epochs=30)
+    convnet = conv_setup_2()
+    convnet.fit(Xtrain, Ttrain, Xtest, Ttest, lr=1e-3, epochs=25)
 
 
 if __name__ == '__main__':
