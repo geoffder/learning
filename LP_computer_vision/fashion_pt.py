@@ -98,7 +98,7 @@ class CNN(nn.Module):
 
         # output layers (final dropout and logistic regression)
         self.log_drop = nn.Dropout(p=self.drop_rates[-1])
-        self.logistic = torch.nn.Linear(M1, self.K)
+        self.logistic = nn.Linear(M1, self.K)
 
     def forward(self, X):
         # convolutional layers
@@ -124,7 +124,7 @@ class CNN(nn.Module):
             Xtest = torch.from_numpy(Xtest).float().to(device)
             Ttest = torch.from_numpy(Ttest).long().to(device)
 
-            self.loss = torch.nn.CrossEntropyLoss(reduction='mean').to(device)
+            self.loss = nn.CrossEntropyLoss(reduction='mean').to(device)
             self.optimizer = optim.Adam(self.parameters(), lr=lr)
 
             n_batches = N // batch_sz
@@ -244,10 +244,10 @@ def loadAndProcess():
 def conv_setup_1():
     convnet = CNN(
         [28, 28], 10,  # input dimesions and number of output classes
-        [[5, 5, 1, 20], [5, 5, 20, 50], [5, 5, 50, 50]],  # conv layers
+        [[5, 5, 1, 32], [3, 3, 32, 64], [3, 3, 64, 128]],  # conv layers
         [2, 2, 2],  # max pool sizes/strides
-        [1000, 1000, 500, 500, 300, 100],  # fully connected layers
-        [.2, .5, .5, .5, .5, .5, .5, .5, .5, .5],  # dropout rates
+        [300],  # fully connected layers
+        [.2, .5, .5, .5, .5],  # dropout rates
     )
     return convnet
 
@@ -267,8 +267,8 @@ def main():
     X, T = loadAndProcess()
     Xtrain, Ttrain, Xtest, Ttest = trainTestSplit(X, T, ratio=.8)
     del X, T  # free up memory
-    convnet = conv_setup_2()
-    convnet.fit(Xtrain, Ttrain, Xtest, Ttest, lr=1e-3, epochs=25)
+    convnet = conv_setup_1()
+    convnet.fit(Xtrain, Ttrain, Xtest, Ttest, lr=1e-3, epochs=25, batch_sz=100)
 
 
 if __name__ == '__main__':
