@@ -5,6 +5,7 @@ from sklearn.utils import shuffle
 
 import torch
 from torch import nn
+import torch.nn.functional as F
 from torch import optim
 
 # use GPU if available.
@@ -47,10 +48,9 @@ class CNN(nn.Module):
         self.to(device)
 
     def build(self):
-        # convolutional layers
+        # convolutional layers (MaxPool2D and ELU applied in forward())
         self.conv_drops = nn.ModuleList()
         self.convs = nn.ModuleList()
-        self.maxpools = nn.ModuleList()
         self.conv_bnorms = nn.ModuleList()
         # fully connected layers
         self.dense_drops = nn.ModuleList()
@@ -65,8 +65,7 @@ class CNN(nn.Module):
                 nn.Conv2d(shape[2], shape[3], (shape[0], shape[1]), stride=1,
                           padding=(shape[0]//2, shape[1]//2))
             )
-            # stride for pool is same as kernel size by default
-            self.maxpools.append(nn.MaxPool2d(self.pool_szs[i]))
+
             # batch normalization (pass through before non-linearity)
             self.conv_bnorms.append(nn.BatchNorm2d(shape[3]))
 
@@ -102,14 +101,16 @@ class CNN(nn.Module):
 
     def forward(self, X):
         # convolutional layers
-        for drop, conv, pool, bnorm in zip(
-                self.conv_drops, self.convs, self.maxpools, self.conv_bnorms):
-            X = pool(nn.functional.elu(bnorm(conv(drop(X)))))
+        for i, (drop, conv, bnorm) in enumerate(zip(
+                self.conv_drops, self.convs, self.conv_bnorms)):
+            X = F.elu(bnorm(conv(drop(X))))
+            if self.pool_szs[i] > 1:
+                X = F.max_pool2d(X, kernel_size=self.pool_szs[i])
         X = self.flatten(X)
         # fully connected layers
         for drop, dense, bnorm in zip(
                 self.dense_drops, self.denses, self.dense_bnorms):
-            X = nn.functional.elu(bnorm(dense(X)))
+            X = F.elu(bnorm(dense(X)))
         # get logits
         return self.logistic(self.log_drop(X))
 
@@ -242,6 +243,7 @@ def loadAndProcess():
 
 
 def conv_setup_1():
+    "Similar to LP's simple CNN architecture"
     convnet = CNN(
         [28, 28], 10,  # input dimesions and number of output classes
         [[5, 5, 1, 32], [3, 3, 32, 64], [3, 3, 64, 128]],  # conv layers
@@ -253,12 +255,35 @@ def conv_setup_1():
 
 
 def conv_setup_2():
+    "More dense layers."
     convnet = CNN(
         [28, 28], 10,  # input dimesions and number of output classes
         [[5, 5, 1, 30], [3, 3, 30, 60]],  # conv layers
         [2, 2],  # max pool sizes/strides
         [1000, 500, 250, 100],  # fully connected layers
         [.2, .5, .5, .5, .5, .5, .5],  # dropout rates (last is pre-logistic)
+    )
+    return convnet
+
+
+def conv_setup_3():
+    """
+    Multiple convolutions before each max pooling operation. All of these
+    builds perform very similarly. This one is partially just to test that
+    my alteration of how I implemented maxpooling steps worked as intended.
+    Rather than using nn.MaxPool2D modules/layers, I switched to running
+    nn.functional.max_pool2d in forward(). Can skip pooling this way.
+    """
+    convnet = CNN(
+        [28, 28], 10,  # input dimesions and number of output classes
+        [
+            [3, 3, 1, 32], [3, 3, 32, 32],
+            [3, 3, 32, 64], [3, 3, 64, 64],
+            [3, 3, 64, 128], [3, 3, 128, 128], [3, 3, 128, 128],
+        ],  # conv layers
+        [1, 2, 1, 2, 1, 1, 2],  # max pool sizes/strides
+        [300],  # fully connected layers
+        [.2, .5, .5, .5, .5, .5, .5, .5, .5],  # dropout rates
     )
     return convnet
 
