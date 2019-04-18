@@ -4,12 +4,13 @@ from sklearn.metrics import confusion_matrix
 import matplotlib.pyplot as plt
 
 import os
-from skimage import io
+from PIL import Image
 
 import torch
 from torch import nn
 from torch import optim
 from torchvision import models
+from torchvision import transforms
 from torch.utils.data import Dataset, DataLoader
 
 # use GPU if available.
@@ -105,8 +106,8 @@ class TransferVGG16(object):
                             )
                             test_cost += testB_cost
                             test_acc += testB_acc
-                        test_cost /= (t+1)
-                        test_acc /= (t+1)
+                        test_cost /= t+1
+                        test_acc /= t+1
                         # accuracies for train set
                         train_acc = 0
                         for t, trainB in enumerate(train_loader, 1):
@@ -114,7 +115,7 @@ class TransferVGG16(object):
                                 trainB['image'].to(device),
                                 trainB['label'].to(device)
                             )
-
+                        train_acc /= t+1
                         print("cost: %f, acc: %.2f" % (test_cost, test_acc))
 
                 # for plotting
@@ -205,9 +206,10 @@ class TransferVGG16(object):
 class Fruits(Dataset):
     """Fruit-360 Kaggle Dataset"""
 
-    def __init__(self, root_dir, classes):
+    def __init__(self, root_dir, classes, transform=None):
         self.root_dir = root_dir
         self.classes = classes
+        self.transform = transform
         self.K = len(classes)
         self.fruit_frame = self.build_lookup(root_dir, classes)
 
@@ -232,10 +234,16 @@ class Fruits(Dataset):
             self.fruit_frame.iloc[idx, 0],  # folder (name of fruit)
             self.fruit_frame.iloc[idx, 2]  # file name
         )
-        image = (io.imread(img_name) / 255).transpose((2, 0, 1))
-        image = torch.from_numpy(image).float()
+
+        image = Image.open(img_name)
         label = torch.from_numpy(
             np.array(self.fruit_frame.iloc[idx, 1]))
+
+        if self.transform:
+            image = self.transform(image)
+        else:
+            image = transforms.Compose([transforms.ToTensor()])(image)
+
         sample = {'image': image, 'label': label}
         return sample
 
@@ -243,16 +251,30 @@ class Fruits(Dataset):
 def main():
     train_path = '../large_files/fruits-360/Training/'
     test_path = '../large_files/fruits-360/Test/'
-    classes = ['Apple Golden 1', 'Avocado', 'Lemon', 'Mango', 'Kiwi', 'Banana',
-               'Strawberry', 'Raspberry']
-    train_set = Fruits(train_path, classes)
+    # sub-set of fruits
+    # classes = ['Apple Golden 1', 'Avocado', 'Lemon', 'Mango', 'Kiwi',
+    #            'Banana', 'Strawberry', 'Raspberry']
+    # all of the fruits
+    classes = [name for name in os.listdir(train_path)
+               if os.path.isdir(train_path+name)]
+
+    train_set = Fruits(
+        train_path, classes,
+        transforms.Compose([
+            # transforms.RandomHorizontalFlip(p=.5),
+            # transforms.RandomVerticalFlip(p=.5),
+            # transforms.RandomRotation(20),
+            # transforms.RandomResizedCrop(100),
+            transforms.ToTensor()
+        ])
+    )
     test_set = Fruits(test_path, classes)
 
     vgg = TransferVGG16(
-        dims=[3, 100, 100], classes=8,
+        dims=[3, 100, 100], classes=len(classes),
         freeze_features=True, freeze_classifier=True
     )
-    vgg.fit(train_set, test_set, lr=1e-3, epochs=1, batch_sz=100)
+    vgg.fit(train_set, test_set, lr=1e-3, epochs=10, batch_sz=100)
     # print(vgg.get_confusion_matrix(test_set))
 
 
