@@ -66,12 +66,12 @@ class ResBlock(nn.Module):
         fX = X
         for i, (conv, bnorm) in enumerate(zip(self.mains, self.main_bnorms)):
             fX = bnorm(conv(fX))
-            fX = F.relu(fX) if i < len(self.mains)-1 else fX
+            fX = F.elu(fX) if i < len(self.mains)-1 else fX
         # shortcut branch
         if self.skip_conv_shape is not None:
             X = self.skip_bnorm(self.skip(X))
         # re-join main and shortcut branches
-        return F.relu(fX + X)
+        return F.elu(fX + X)
 
 
 class ResNet(nn.Module):
@@ -145,8 +145,8 @@ class ResNet(nn.Module):
 
     def forward(self, X):
         # convolutional layers
-        X = self.pre_bnorm(self.pre_conv(X))
-        X = F.max_pool2d(X, kernel_size=self.pool_szs[0])
+        X = F.elu(self.pre_bnorm(self.pre_conv(X)))  # not sure abt activation
+        X = F.max_pool2d(X, kernel_size=self.pool_szs[0])  # or avg?
         # residual blocks
         for i, block in enumerate(self.blocks, 1):
             X = block(X)
@@ -315,11 +315,39 @@ def resnet_setup_1():
     return convnet
 
 
+def resnet_setup_2():
+    convnet = ResNet(
+        [28, 28], 10,  # input dimesions and number of output classes
+        [5, 5, 1, 32],  # pre-residual convolution
+        # residual blocks (blocks without 'skip' are identity blocks)
+        [
+            {
+                'main': [[1, 1, 32, 64], [3, 3, 64, 64], [1, 1, 64, 256]],
+                'skip': [3, 3, 32, 256]
+            },
+            {'main': [[1, 1, 256, 64], [3, 3, 64, 64], [1, 1, 64, 256]]},
+            {'main': [[1, 1, 256, 64], [3, 3, 64, 64], [1, 1, 64, 256]]},
+            {'main': [[1, 1, 256, 64], [3, 3, 64, 64], [1, 1, 64, 256]]},
+            {
+                'main': [[1, 1, 256, 128], [3, 3, 128, 128], [1, 1, 128, 512]],
+                'skip': [3, 3, 256, 512]
+            },
+            {'main': [[1, 1, 512, 128], [3, 3, 128, 128], [1, 1, 128, 512]]},
+            {'main': [[1, 1, 512, 128], [3, 3, 128, 128], [1, 1, 128, 512]]},
+            {'main': [[1, 1, 512, 128], [3, 3, 128, 128], [1, 1, 128, 512]]}
+        ],
+        [2, 1, 1, 1, 1, 1, 1, 1, 1, 2],  # pool sizes
+        [0],  # dropout rates (dense layers)
+        [],  # fully connected layers (before logistic layer)
+    )
+    return convnet
+
+
 def main():
     X, T = loadAndProcess()
     Xtrain, Ttrain, Xtest, Ttest = trainTestSplit(X, T, ratio=.8)
     del X, T  # free up memory
-    resn = resnet_setup_1()
+    resn = resnet_setup_2()
     resn.fit(Xtrain, Ttrain, Xtest, Ttest, lr=1e-3, epochs=25, batch_sz=100)
 
 
