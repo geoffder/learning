@@ -66,12 +66,12 @@ class ResBlock(nn.Module):
         fX = X
         for i, (conv, bnorm) in enumerate(zip(self.mains, self.main_bnorms)):
             fX = bnorm(conv(fX))
-            fX = F.elu(fX) if i < len(self.mains)-1 else fX
+            fX = F.relu(fX) if i < len(self.mains)-1 else fX
         # shortcut branch
         if self.skip_conv_shape is not None:
             X = self.skip_bnorm(self.skip(X))
         # re-join main and shortcut branches
-        return F.elu(fX + X)
+        return F.relu(fX + X)
 
 
 class ResNet(nn.Module):
@@ -145,7 +145,7 @@ class ResNet(nn.Module):
 
     def forward(self, X):
         # convolutional layers
-        X = F.elu(self.pre_bnorm(self.pre_conv(X)))  # not sure abt activation
+        X = F.relu(self.pre_bnorm(self.pre_conv(X)))  # not sure abt activation
         X = F.max_pool2d(X, kernel_size=self.pool_szs[0])  # or avg?
         # residual blocks
         for i, block in enumerate(self.blocks, 1):
@@ -157,7 +157,7 @@ class ResNet(nn.Module):
         # fully connected layers
         for drop, dense, bnorm in zip(
                 self.dense_drops, self.denses, self.dense_bnorms):
-            X = F.elu(bnorm(dense(X)))
+            X = F.relu(bnorm(dense(X)))
         # get logits
         return self.logistic(self.log_drop(X))
 
@@ -323,14 +323,14 @@ def resnet_setup_2():
         [
             {
                 'main': [[1, 1, 32, 64], [3, 3, 64, 64], [1, 1, 64, 256]],
-                'skip': [3, 3, 32, 256]
+                'skip': [1, 1, 32, 256]
             },
             {'main': [[1, 1, 256, 64], [3, 3, 64, 64], [1, 1, 64, 256]]},
             {'main': [[1, 1, 256, 64], [3, 3, 64, 64], [1, 1, 64, 256]]},
             {'main': [[1, 1, 256, 64], [3, 3, 64, 64], [1, 1, 64, 256]]},
             {
                 'main': [[1, 1, 256, 128], [3, 3, 128, 128], [1, 1, 128, 512]],
-                'skip': [3, 3, 256, 512]
+                'skip': [1, 1, 256, 512]
             },
             {'main': [[1, 1, 512, 128], [3, 3, 128, 128], [1, 1, 128, 512]]},
             {'main': [[1, 1, 512, 128], [3, 3, 128, 128], [1, 1, 128, 512]]},
