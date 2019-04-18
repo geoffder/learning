@@ -63,7 +63,7 @@ class CNN(nn.Module):
             # convolutional layers (in features, out features, (H dim, W dim))
             self.convs.append(
                 nn.Conv2d(shape[2], shape[3], (shape[0], shape[1]), stride=1,
-                          padding=(shape[0]//2, shape[1]//2))
+                          padding=(shape[0]//2, shape[1]//2), bias=False)
             )
 
             # batch normalization (pass through before non-linearity)
@@ -87,7 +87,7 @@ class CNN(nn.Module):
             self.dense_drops.append(
                 nn.Dropout(p=self.drop_rates[len(self.conv_drops)+i]))
             # fully-connected dense layer (linear transform)
-            self.denses.append(nn.Linear(M1, M2))
+            self.denses.append(nn.Linear(M1, M2, bias=False))
             # batch-normalization preceding non-linearity
             self.dense_bnorms.append(
                 nn.BatchNorm1d(M2, eps=self.epsilon, momentum=self.batch_mu,
