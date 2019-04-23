@@ -296,7 +296,7 @@ def loadAndProcess():
 def inception_setup_1():
     dream = InceptNet(
         [28, 28], 10,  # input dimesions and number of output classes
-        [[1, 32, 64], [256, 48, 64], [256, 48, 64]],
+        [[1, 32, 64], [256, 48, 64], [256, 48, 64]],  # inception blocks
         [2, 2, 2],  # pool sizes (after each block)
         [0],  # dropout rates (dense layers)
         [],  # fully connected layers (before logistic layer)
@@ -307,7 +307,7 @@ def inception_setup_1():
 def inception_setup_2():
     dream = InceptNet(
         [28, 28], 10,  # input dimesions and number of output classes
-        [[1, 32, 64], [256, 48, 64], [256, 48, 64], [256, 48, 64]],
+        [[1, 32, 64], [256, 48, 64], [256, 48, 64], [256, 48, 64]],  # blocks
         [1, 2, 2, 2],  # pool sizes (after each block)
         [0],  # dropout rates (dense layers)
         [],  # fully connected layers (before logistic layer)
