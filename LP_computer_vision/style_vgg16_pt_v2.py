@@ -109,7 +109,7 @@ class StyleVGG16(object):
         content = content.reshape(1, *content.shape)
         style = style.reshape(1, *style.shape)
         # send data to GPU
-        self.X = torch.randn(content.shape, requires_grad=True, device='cuda')
+        self.X = torch.rand(content.shape, requires_grad=True, device='cuda')
         self.content = torch.from_numpy(content).float().to(device)
         self.style = torch.from_numpy(style).float().to(device)
 
@@ -171,12 +171,13 @@ class StyleVGG16(object):
 
 def main():
     # load content image
-    content = Image.open('../large_files/test_images/toby_500.jpg')
-    # content = Image.open('../large_files/test_images/annes_700.jpg')
-    # content = Image.open('../large_files/test_images/schwabes.jpg')
+    content = Image.open('../large_files/test_images/toby_600.jpg')
+    # content = Image.open('../large_files/test_images/annes_600.jpg')
+    # content = Image.open('../large_files/test_images/schwabes_600.jpg')
     content = np.array(content).transpose(2, 0, 1) / 255
     # load style image
-    style = Image.open('../large_files/test_images/starry_night_600.jpg')
+    # style = Image.open('../large_files/test_images/starry_night_600.jpg')
+    style = Image.open('../large_files/test_images/outrun_strokes_400.jpg')
     # style = Image.open('../large_files/test_images/Claude_Monet_400.jpg')
     style = np.array(style).transpose(2, 0, 1) / 255
 
@@ -184,7 +185,7 @@ def main():
     vgg = StyleVGG16(content_layer=17, batchnorm=True)
     # transer style
     painting = vgg.generate(
-        content, style, alpha=1, beta=400, lr=1, epochs=5, print_every=2
+        content, style, alpha=.2, beta=30, lr=1, epochs=5, print_every=2
     )
     painting = (painting.transpose(1, 2, 0)*255).astype(np.uint8)
     img = Image.fromarray(painting)
