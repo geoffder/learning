@@ -65,6 +65,7 @@ class TransferVGG16(object):
                 * np.floor(self.dims[2]/pool_redux)
                 * num_fmaps
             ).astype(np.int)
+            flat = 25088  # debug (borked the vector length calculation)
             vgg.classifier[0] = nn.Linear(
                 in_features=flat, out_features=4096, bias=True)
 
