@@ -5,8 +5,7 @@ from PIL import Image
 from skimage.transform import resize
 
 import torch
-from torch import nn
-from torch import optim
+# from torch import nn
 from torchvision import models
 
 # use GPU if available.
