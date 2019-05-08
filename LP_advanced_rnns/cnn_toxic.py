@@ -3,6 +3,7 @@ import pandas as pd
 import matplotlib.pyplot as plt
 # from sklearn.utils import shuffle
 import string
+import os.path
 
 import torch
 from torch import nn
@@ -35,7 +36,8 @@ class LanguageCNN(nn.Module):
     This example is working with the Kaggle Toxic Comment dataset.
     """
     def __init__(self, dims, K, conv_layer_shapes, pool_szs,
-                 hidden_layer_sizes, p_drop, batch_mu=.1, epsilon=1e-4):
+                 hidden_layer_sizes, p_drop, embeddings=None, batch_mu=.1,
+                 epsilon=1e-4):
         super(LanguageCNN, self).__init__()
         # data shape
         self.dims = dims  # input dimensions
@@ -50,12 +52,19 @@ class LanguageCNN(nn.Module):
         self.epsilon = epsilon
         self.batch_mu = batch_mu
         # assemble network and move to GPU
-        self.build()
+        self.build(embeddings)
         self.to(device)
 
-    def build(self):
+    def build(self, embeddings):
         # TODO: Add word embedding layer that uses frozen pre-trained weights
         # TODO: Change convolutional layers to do 1D convolution
+        if embeddings is not None:
+            self.embed = nn.Embedding.from_pretrained(
+                torch.from_numpy(embeddings).float()
+            )
+        else:
+            self.embed = nn.Embedding(self.V, 100, padding_idx=0)
+
         # convolutional layers (MaxPool and ELU applied in forward())
         self.convs = nn.ModuleList()
         self.conv_bnorms = nn.ModuleList()
@@ -105,10 +114,11 @@ class LanguageCNN(nn.Module):
         self.logistic = nn.Linear(M1, self.K)
 
     def forward(self, X):
+        # convert sequence of indices to word-vector matrices
+        X = self.embed(X)
         # convolutional layers
-        for i, (drop, conv, bnorm) in enumerate(zip(
-                self.conv_drops, self.convs, self.conv_bnorms)):
-            X = F.elu(bnorm(conv(drop(X))))
+        for i, (conv, bnorm) in enumerate(zip(self.convs, self.conv_bnorms)):
+            X = F.elu(bnorm(conv(X)))
             if self.pool_szs[i] > 1:
                 X = F.max_pool2d(X, kernel_size=self.pool_szs[i])
         X = self.flatten(X)
@@ -271,7 +281,7 @@ def trim_vocab(seqs, word2idx, freqs, MAX_VOCAB=20000):
     common = set(idxs[:MAX_VOCAB])
     # replace all sequence elements not in most common set with padding tokens
     seqs = [[idx if idx in common else 0 for idx in seq] for seq in seqs]
-    return seqs, words, idxs
+    return seqs, words[:MAX_VOCAB], idxs[:MAX_VOCAB]
 
 
 def pad_seqs(sequences):
@@ -284,9 +294,25 @@ def pad_seqs(sequences):
 
 
 def get_embeddings(filestr, word2idx, idx2word, common_idxs, common_words):
-    df = pd.read_csv(filestr, header=None, sep=' ', quoting=3)
-    # word_set = set(common_words)
-    df = df.loc[common_words, :]  # trim dataframe to only the words needed
+    # immediately transpose, so columns/keys are the words
+    df = pd.read_csv(filestr, index_col=0, header=None, sep=' ', quoting=3).T
+    embed_dim = df.shape[0]  # number of emebdding dimensions
+    embed = np.zeros((max(common_idxs)+1, embed_dim))  # to be filled
+
+    # set-up a progress bar since this takes a bit
+    tick = np.floor(len(common_words)/50)  # for progress bar (2% each)
+    print('Importing pre-trained word-embeddings...')
+    print('['+' '*50+']', end='\r', flush=True)  # return allows overwritting
+
+    # fill in rows of embedding matrix with (trimmed) vocabulary
+    for prog, (idx, word) in enumerate(zip(common_idxs, common_words), 1):
+        embed[idx, :] = df.get(word, default=0)
+        if prog % tick == 0:
+            # overwrite progress bar with an additional tick
+            ticks = int(np.floor(prog/tick))
+            print('[' + '='*ticks + ' '*(50-ticks) + ']', end='\r', flush=True)
+    print('')  # newline
+    return embed
 
 
 def main():
@@ -305,15 +331,22 @@ def main():
     # process sequence data for the CNN (limit vocab and pad to same length)
     print('Total vocabulary size:', len(idx2word))
     seqs, common_words, common_idxs = trim_vocab(seqs, word2idx, freqs)
+    print('Trimmed vocabulary size:', len(common_words))
+
     X = np.array(pad_seqs(seqs))
     print('X shape:', X.shape)
     print('T shape:', labels.shape)
 
     # load and process pre-trained embeddings
-    embeds = get_embeddings(
-        datapath+'/glove_embeddings/glove.6B.100d.txt',
-        word2idx, idx2word, common_idxs, common_words
-    )
+    if os.path.isfile(datapath+'/glove_embeddings/glove100_toxic.npy'):
+        embeds = np.load(datapath+'/glove_embeddings/glove100_toxic.npy')
+    else:
+        embeds = get_embeddings(
+            datapath+'/glove_embeddings/glove.6B.100d.txt',
+            word2idx, idx2word, common_idxs, common_words
+        )
+        np.save(datapath+'/glove_embeddings/glove100_toxic.npy', embeds)
+    print('Word Embeddings shape:', embeds.shape)
 
 
 if __name__ == '__main__':
