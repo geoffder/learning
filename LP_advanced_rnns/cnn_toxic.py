@@ -1,6 +1,8 @@
 import numpy as np
+import pandas as pd
 import matplotlib.pyplot as plt
 # from sklearn.utils import shuffle
+import string
 
 import torch
 from torch import nn
@@ -220,9 +222,100 @@ class LanguageCNN(nn.Module):
         return output.item(), acc
 
 
+def tokenizer(s):
+    "Remove puncutation, downcase and split on spaces and return a list"
+    s = s.translate(str.maketrans('', '', string.punctuation))
+    s = s.lower()  # downcase
+    return s.split()
+
+
+def process(comments):
+    """
+    Take in list of comments (strings) and tokenize them to build word index
+    mappings to allowing conversion of comments into word vectors. Outputs are
+    sequences of indices (used to map words to embeddings), the word->index
+    and index->word) mappings and the frequencies of each word. The
+    frequencies can be used to trim down the vocabulary to the most common
+    words if the original size is too great.
+    """
+    word_index_map = {'PAD_TOKEN': 0}
+    current_index = 1  # 0 is reserved for padding
+    sequences = []
+    index_word_map = ['PAD_TOKEN']
+    freqs = {}
+    for comment in comments:
+        sequence = []
+        tokens = tokenizer(comment)
+        for token in tokens:
+            if token not in word_index_map:
+                word_index_map[token] = current_index
+                current_index += 1
+                index_word_map.append(token)
+                freqs[token] = 1
+            else:
+                freqs[token] += 1
+            sequence.append(word_index_map[token])
+        sequences.append(sequence)
+
+    return sequences, word_index_map, index_word_map, freqs
+
+
+def trim_vocab(seqs, word2idx, freqs, MAX_VOCAB=20000):
+    # words by descending frequency
+    # idxs = [word2idx[k] for k in sorted(freqs, key=freqs.get, reverse=True)]
+    words, idxs = [], []
+    for k in sorted(freqs, key=freqs.get, reverse=True):
+        words.append(k)
+        idxs.append(word2idx[k])
+
+    common = set(idxs[:MAX_VOCAB])
+    # replace all sequence elements not in most common set with padding tokens
+    seqs = [[idx if idx in common else 0 for idx in seq] for seq in seqs]
+    return seqs, words, idxs
+
+
+def pad_seqs(sequences):
+    max_len = 0
+    for i, seq in enumerate(sequences):
+        max_len = len(seq) if len(seq) > max_len else max_len
+
+    sequences = [seq + [0]*(max_len - len(seq)) for seq in sequences]
+    return sequences
+
+
+def get_embeddings(filestr, word2idx, idx2word, common_idxs, common_words):
+    df = pd.read_csv(filestr, header=None, sep=' ', quoting=3)
+    # word_set = set(common_words)
+    df = df.loc[common_words, :]  # trim dataframe to only the words needed
+
+
 def main():
-    pass
+    toxic_data = pd.read_csv(datapath+'toxic_comments/train.csv')
+
+    # pull out targets
+    categories = ['comment_text', 'toxic', 'severe_toxic', 'obscene', 'threat',
+                  'insult', 'identity_hate']
+    labels = toxic_data[categories].values
+
+    # pull out comment text data
+    comments = toxic_data['comment_text'].values
+    del toxic_data  # don't need dataframe anymore
+    seqs, word2idx, idx2word, freqs = process(comments)
+
+    # process sequence data for the CNN (limit vocab and pad to same length)
+    print('Total vocabulary size:', len(idx2word))
+    seqs, common_words, common_idxs = trim_vocab(seqs, word2idx, freqs)
+    X = np.array(pad_seqs(seqs))
+    print('X shape:', X.shape)
+    print('T shape:', labels.shape)
+
+    # load and process pre-trained embeddings
+    embeds = get_embeddings(
+        datapath+'/glove_embeddings/glove.6B.100d.txt',
+        word2idx, idx2word, common_idxs, common_words
+    )
 
 
 if __name__ == '__main__':
+    datapath = 'C:/Users/geoff/GitRepos/learning/large_files/'
     main()
