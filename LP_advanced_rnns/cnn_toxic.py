@@ -367,6 +367,14 @@ def main():
     Xtrain, Ttrain, Xtest, Ttest = trainTestSplit(X, labels, ratio=.8)
 
     # build CNN and fit to data
+    cnn = build2(V, K, embeds)
+    cnn.fit(
+        Xtrain, Ttrain, Xtest, Ttest,
+        epochs=5, batch_sz=200, print_every=100
+    )
+
+
+def build1(V, K, embeds):
     cnn = LanguageCNN(
         V, K,
         [[3, 100, 32], [3, 32, 64], [3, 64, 128]],  # conv1d (kernel, in, out)
@@ -375,10 +383,19 @@ def main():
         [.5, .5],  # dropout
         embeddings=embeds
     )
-    cnn.fit(
-        Xtrain, Ttrain, Xtest, Ttest,
-        epochs=5, batch_sz=200, print_every=100
+    return cnn
+
+
+def build2(V, K, embeds):
+    cnn = LanguageCNN(
+        V, K,
+        [[3, 100, 32]],  # conv1d (kernel, in, out)
+        [0],  # pooling
+        [256, 128],  # dense layers
+        [.5, .5, .5],  # dropout
+        embeddings=embeds
     )
+    return cnn
 
 
 if __name__ == '__main__':
