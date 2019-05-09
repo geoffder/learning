@@ -1,7 +1,8 @@
 import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
-# from sklearn.utils import shuffle
+
+from sklearn.utils import shuffle
 import string
 import os.path
 
@@ -14,6 +15,7 @@ from torch import optim
 # use GPU if available.
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 torch.backends.cudnn.benchmark = True
+# device = torch.device("cpu")
 
 
 class Flatten(nn.Module):
@@ -35,12 +37,11 @@ class LanguageCNN(nn.Module):
 
     This example is working with the Kaggle Toxic Comment dataset.
     """
-    def __init__(self, dims, K, conv_layer_shapes, pool_szs,
-                 hidden_layer_sizes, p_drop, embeddings=None, batch_mu=.1,
-                 epsilon=1e-4):
+    def __init__(self, V, K, conv_layer_shapes, pool_szs, hidden_layer_sizes,
+                 p_drop, embeddings=None, batch_mu=.1, epsilon=1e-4):
         super(LanguageCNN, self).__init__()
         # data shape
-        self.dims = dims  # input dimensions
+        self.V = V  # vocab size
         self.K = K  # output classes
         # conv architecture
         self.conv_layer_shapes = conv_layer_shapes
@@ -60,7 +61,8 @@ class LanguageCNN(nn.Module):
         # TODO: Change convolutional layers to do 1D convolution
         if embeddings is not None:
             self.embed = nn.Embedding.from_pretrained(
-                torch.from_numpy(embeddings).float()
+                torch.from_numpy(embeddings).float(),
+                freeze=True
             )
         else:
             self.embed = nn.Embedding(self.V, 100, padding_idx=0)
@@ -74,32 +76,32 @@ class LanguageCNN(nn.Module):
         self.dense_bnorms = nn.ModuleList()
 
         for i, shape in enumerate(self.conv_layer_shapes):
-            # convolutional layers (in features, out features, (H dim, W dim))
+            # 1D convolutional layers (in features, out features, kernel)
             self.convs.append(
-                nn.Conv2d(shape[2], shape[3], (shape[0], shape[1]), stride=1,
-                          padding=(shape[0]//2, shape[1]//2), bias=False)
+                nn.Conv1d(shape[1], shape[2], shape[0], stride=1,
+                          padding=shape[0]//2, bias=False)
             )
-
             # batch normalization (pass through before non-linearity)
-            self.conv_bnorms.append(nn.BatchNorm2d(shape[3]))
+            self.conv_bnorms.append(nn.BatchNorm1d(shape[2]))
 
         # transform featuremaps into 1D vectors for transition to dense layers
         self.flatten = Flatten()
 
         # calculate dimensions going in to dense layers (post flattening len)
-        num_fmaps = self.conv_layer_shapes[-1][3]
-        pool_redux = np.prod([p for p in self.pool_szs])
-        D = (
-            np.floor(self.dims[0]/pool_redux)
-            * np.floor(self.dims[1]/pool_redux)
-            * num_fmaps
-        ).astype(np.int)
+        # num_fmaps = self.conv_layer_shapes[-1][2]
+        # pool_redux = np.prod([p for p in self.pool_szs])
+        # D = (
+        #     np.floor(self.dims[0]/pool_redux)
+        #     * np.floor(self.dims[1]/pool_redux)
+        #     * num_fmaps
+        # ).astype(np.int)
 
-        M1 = D  # input size to first dense layer (flattened conv output)
+        # input size to first dense layer (global pooled conv output)
+        # M1 = D
+        M1 = self.conv_layer_shapes[-1][2]
         for i, M2 in enumerate(self.hidden_layer_sizes):
             # dropout preceding fully-connected layer
-            self.dense_drops.append(
-                nn.Dropout(p=self.drop_rates[len(self.conv_drops)+i]))
+            self.dense_drops.append(nn.Dropout(p=self.drop_rates[i]))
             # fully-connected dense layer (linear transform)
             self.denses.append(nn.Linear(M1, M2, bias=False))
             # batch-normalization preceding non-linearity
@@ -116,12 +118,13 @@ class LanguageCNN(nn.Module):
     def forward(self, X):
         # convert sequence of indices to word-vector matrices
         X = self.embed(X)
+        X = X.transpose(1, 2)  # switch time to last dimension
         # convolutional layers
         for i, (conv, bnorm) in enumerate(zip(self.convs, self.conv_bnorms)):
             X = F.elu(bnorm(conv(X)))
             if self.pool_szs[i] > 1:
-                X = F.max_pool2d(X, kernel_size=self.pool_szs[i])
-        X = self.flatten(X)
+                X = F.max_pool1d(X, kernel_size=self.pool_szs[i])
+        X = self.flatten(F.adaptive_max_pool1d(X, 1))
         # fully connected layers
         for drop, dense, bnorm in zip(
                 self.dense_drops, self.denses, self.dense_bnorms):
@@ -129,20 +132,20 @@ class LanguageCNN(nn.Module):
         # get logits
         # TODO: Change to use sigmoid independently on each of the K outputs
         # TODO: Need binary pred for each label independently (can be multiple)
-        return self.logistic(self.log_drop(X))
+        return torch.sigmoid(self.logistic(self.log_drop(X)))
 
     def fit(self, Xtrain, Ttrain, Xtest, Ttest, lr=1e-4, epochs=40,
-            batch_sz=200, print_every=50):
+            batch_sz=100, print_every=50):
 
             N = Xtrain.shape[0]  # number of samples
 
             # send data to GPU
-            Xtrain = torch.from_numpy(Xtrain).float().to(device)
-            Ttrain = torch.from_numpy(Ttrain).long().to(device)
-            Xtest = torch.from_numpy(Xtest).float().to(device)
-            Ttest = torch.from_numpy(Ttest).long().to(device)
+            Xtrain = torch.from_numpy(Xtrain).long().to(device)
+            Ttrain = torch.from_numpy(Ttrain).float().to(device)
+            Xtest = torch.from_numpy(Xtest).long().to(device)
+            Ttest = torch.from_numpy(Ttest).float().to(device)
 
-            self.loss = nn.CrossEntropyLoss(reduction='mean').to(device)
+            self.loss = nn.BCELoss(reduction='mean').to(device)
             self.optimizer = optim.Adam(self.parameters(), lr=lr)
 
             n_batches = N // batch_sz
@@ -164,9 +167,10 @@ class LanguageCNN(nn.Module):
                         inds = torch.randperm(Xtest.size()[0])
                         Xtest, Ttest = Xtest[inds], Ttest[inds]
                         # accuracies for train and test sets
-                        train_acc = self.score(Xtrain, Ttrain)
+                        train_acc = self.score(
+                            Xtrain[:batch_sz*5], Ttrain[:batch_sz*5])
                         test_cost, test_acc = self.cost_and_score(
-                            Xtest, Ttest)
+                            Xtest[:batch_sz*5], Ttest[:batch_sz*5])
                         print("cost: %f, acc: %.2f" % (test_cost, test_acc))
 
                 # for plotting
@@ -215,7 +219,7 @@ class LanguageCNN(nn.Module):
         self.eval()
         with torch.no_grad():
             logits = self.forward(inputs)
-        return logits.data.cpu().numpy().argmax(axis=1)
+        return logits.data.cpu().numpy().round()
 
     def score(self, inputs, labels):
         predictions = self.predict(inputs)
@@ -227,7 +231,7 @@ class LanguageCNN(nn.Module):
             # Forward
             logits = self.forward(inputs)
             output = self.loss.forward(logits, labels)
-        predictions = logits.data.cpu().numpy().argmax(axis=1)
+        predictions = logits.data.cpu().numpy().round()
         acc = np.mean(labels.cpu().numpy() == predictions)
         return output.item(), acc
 
@@ -306,7 +310,7 @@ def get_embeddings(filestr, word2idx, idx2word, common_idxs, common_words):
 
     # fill in rows of embedding matrix with (trimmed) vocabulary
     for prog, (idx, word) in enumerate(zip(common_idxs, common_words), 1):
-        embed[idx, :] = df.get(word, default=0)
+        embed[idx, :] = df.get(word, default=1e-6)  # try not zero, embed kills
         if prog % tick == 0:
             # overwrite progress bar with an additional tick
             ticks = int(np.floor(prog/tick))
@@ -315,13 +319,26 @@ def get_embeddings(filestr, word2idx, idx2word, common_idxs, common_words):
     return embed
 
 
+def trainTestSplit(X, T, ratio=.5):
+    '''
+    Shuffle dataset and split into training and validation sets given a
+    train:test ratio.
+    '''
+    X, T = shuffle(X, T)
+    N = X.shape[0]
+    Xtrain, Ttrain = X[:int(N*ratio)], T[:int(N*ratio)]
+    Xtest, Ttest = X[int(N*ratio):], T[int(N*ratio):]
+    return Xtrain, Ttrain, Xtest, Ttest
+
+
 def main():
     toxic_data = pd.read_csv(datapath+'toxic_comments/train.csv')
 
     # pull out targets
-    categories = ['comment_text', 'toxic', 'severe_toxic', 'obscene', 'threat',
+    categories = ['toxic', 'severe_toxic', 'obscene', 'threat',
                   'insult', 'identity_hate']
     labels = toxic_data[categories].values
+    K = labels.shape[1]
 
     # pull out comment text data
     comments = toxic_data['comment_text'].values
@@ -329,9 +346,10 @@ def main():
     seqs, word2idx, idx2word, freqs = process(comments)
 
     # process sequence data for the CNN (limit vocab and pad to same length)
-    print('Total vocabulary size:', len(idx2word))
     seqs, common_words, common_idxs = trim_vocab(seqs, word2idx, freqs)
-    print('Trimmed vocabulary size:', len(common_words))
+    V = len(common_words)
+    print('Total vocabulary size:', len(idx2word))
+    print('Trimmed vocabulary size:', V)
 
     X = np.array(pad_seqs(seqs))
     print('X shape:', X.shape)
@@ -347,6 +365,20 @@ def main():
         )
         np.save(datapath+'/glove_embeddings/glove100_toxic.npy', embeds)
     print('Word Embeddings shape:', embeds.shape)
+
+    # train-test split of sequence matrices (X) and sequence labels
+    Xtrain, Ttrain, Xtest, Ttest = trainTestSplit(X, labels, ratio=.8)
+
+    # build CNN and fit to data
+    cnn = LanguageCNN(
+        V, K,
+        [[3, 100, 32], [3, 32, 64], [3, 64, 128]],  # conv1d layers
+        [2, 2, 2],  # pooling
+        [],  # dense layers
+        [0],  # dropout
+        embeddings=embeds
+    )
+    cnn.fit(Xtrain, Ttrain, Xtest, Ttest, epochs=5, batch_sz=200)
 
 
 if __name__ == '__main__':
