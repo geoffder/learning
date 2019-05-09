@@ -374,11 +374,12 @@ def main():
     )
 
     # test with custom sequence
-    test = [word2idx.get(w, 0)
-            for w in tokenizer(
-                "Test phrase here."
-            )
-            ]
+    test = [
+        word2idx.get(w, 0)
+        for w in tokenizer(
+            "Test phrase here."
+        )
+    ]
     test = np.array(test).reshape(1, -1)
     print(
         'test phrase predictions:',
