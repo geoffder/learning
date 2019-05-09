@@ -367,10 +367,22 @@ def main():
     Xtrain, Ttrain, Xtest, Ttest = trainTestSplit(X, labels, ratio=.8)
 
     # build CNN and fit to data
-    cnn = build2(V, K, embeds)
+    cnn = build1(V, K, embeds)
     cnn.fit(
         Xtrain, Ttrain, Xtest, Ttest,
-        epochs=5, batch_sz=200, print_every=100
+        epochs=2, batch_sz=200, print_every=100
+    )
+
+    # test with custom sequence
+    test = [word2idx.get(w, 0)
+            for w in tokenizer(
+                "Test phrase here."
+            )
+            ]
+    test = np.array(test).reshape(1, -1)
+    print(
+        'test phrase predictions:',
+        cnn.predict(torch.from_numpy(test).long().to(device))
     )
 
 
