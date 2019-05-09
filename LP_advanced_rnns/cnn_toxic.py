@@ -15,7 +15,6 @@ from torch import optim
 # use GPU if available.
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 torch.backends.cudnn.benchmark = True
-# device = torch.device("cpu")
 
 
 class Flatten(nn.Module):
@@ -34,6 +33,8 @@ class LanguageCNN(nn.Module):
     all sequences are the same length) then converted to word-vectors with
     pre-trained embeddings. Sequences of vectors are then subject to 1D
     convolutions before dense layers and K binary classifications are done.
+    Note the modifications to the operations done before loss (predictions),
+    not taking the, but outputing K 0->1 non-softmax predictions.
 
     This example is working with the Kaggle Toxic Comment dataset.
     """
@@ -41,7 +42,7 @@ class LanguageCNN(nn.Module):
                  p_drop, embeddings=None, batch_mu=.1, epsilon=1e-4):
         super(LanguageCNN, self).__init__()
         # data shape
-        self.V = V  # vocab size
+        self.V = V  # vocab size (not actually, more like largest word idx)
         self.K = K  # output classes
         # conv architecture
         self.conv_layer_shapes = conv_layer_shapes
@@ -57,8 +58,6 @@ class LanguageCNN(nn.Module):
         self.to(device)
 
     def build(self, embeddings):
-        # TODO: Add word embedding layer that uses frozen pre-trained weights
-        # TODO: Change convolutional layers to do 1D convolution
         if embeddings is not None:
             self.embed = nn.Embedding.from_pretrained(
                 torch.from_numpy(embeddings).float(),
@@ -84,20 +83,10 @@ class LanguageCNN(nn.Module):
             # batch normalization (pass through before non-linearity)
             self.conv_bnorms.append(nn.BatchNorm1d(shape[2]))
 
-        # transform featuremaps into 1D vectors for transition to dense layers
+        # transform conv output into 1D vectors for transition to dense layers
         self.flatten = Flatten()
 
-        # calculate dimensions going in to dense layers (post flattening len)
-        # num_fmaps = self.conv_layer_shapes[-1][2]
-        # pool_redux = np.prod([p for p in self.pool_szs])
-        # D = (
-        #     np.floor(self.dims[0]/pool_redux)
-        #     * np.floor(self.dims[1]/pool_redux)
-        #     * num_fmaps
-        # ).astype(np.int)
-
         # input size to first dense layer (global pooled conv output)
-        # M1 = D
         M1 = self.conv_layer_shapes[-1][2]
         for i, M2 in enumerate(self.hidden_layer_sizes):
             # dropout preceding fully-connected layer
@@ -117,21 +106,19 @@ class LanguageCNN(nn.Module):
 
     def forward(self, X):
         # convert sequence of indices to word-vector matrices
-        X = self.embed(X)
-        X = X.transpose(1, 2)  # switch time to last dimension
+        X = self.embed(X).transpose(1, 2)  # switch time to last dimension
         # convolutional layers
         for i, (conv, bnorm) in enumerate(zip(self.convs, self.conv_bnorms)):
             X = F.elu(bnorm(conv(X)))
             if self.pool_szs[i] > 1:
                 X = F.max_pool1d(X, kernel_size=self.pool_szs[i])
-        X = self.flatten(F.adaptive_max_pool1d(X, 1))
+        # pool over all channels and flatten (input to dense is len C vector)
+        X = self.flatten(F.adaptive_max_pool1d(X, 1))  # max outperforms avg
         # fully connected layers
         for drop, dense, bnorm in zip(
                 self.dense_drops, self.denses, self.dense_bnorms):
             X = F.elu(bnorm(dense(X)))
-        # get logits
-        # TODO: Change to use sigmoid independently on each of the K outputs
-        # TODO: Need binary pred for each label independently (can be multiple)
+        # pass logits through sigmoid (each output is binary classification)
         return torch.sigmoid(self.logistic(self.log_drop(X)))
 
     def fit(self, Xtrain, Ttrain, Xtest, Ttest, lr=1e-4, epochs=40,
@@ -274,30 +261,37 @@ def process(comments):
     return sequences, word_index_map, index_word_map, freqs
 
 
-def trim_vocab(seqs, word2idx, freqs, MAX_VOCAB=20000):
-    # words by descending frequency
-    # idxs = [word2idx[k] for k in sorted(freqs, key=freqs.get, reverse=True)]
+def trim_vocab(seqs, word2idx, freqs, MAX_VOCAB=20000, padNum=0):
+    """
+    Sort words by descending frequency and keep the top MAX_VOCAB of them. All
+    other word indices (not in common set) are written over with a padding
+    index (padNum, default: 0).
+    """
     words, idxs = [], []
-    for k in sorted(freqs, key=freqs.get, reverse=True):
+    for k in sorted(freqs, key=freqs.get, reverse=True)[:MAX_VOCAB]:
         words.append(k)
         idxs.append(word2idx[k])
 
-    common = set(idxs[:MAX_VOCAB])
     # replace all sequence elements not in most common set with padding tokens
-    seqs = [[idx if idx in common else 0 for idx in seq] for seq in seqs]
-    return seqs, words[:MAX_VOCAB], idxs[:MAX_VOCAB]
+    common = set(idxs)  # convert to set for quick lookup (vs list)
+    seqs = [[idx if idx in common else padNum for idx in seq] for seq in seqs]
+    return seqs, words, idxs
 
 
-def pad_seqs(sequences):
+def pad_seqs(sequences, padNum=0):
+    """
+    Take in list of lists (sequences of variable length), and pad them with
+    a given number (default: 0) to the same length (longest in sequences).
+    """
     max_len = 0
     for i, seq in enumerate(sequences):
         max_len = len(seq) if len(seq) > max_len else max_len
 
-    sequences = [seq + [0]*(max_len - len(seq)) for seq in sequences]
+    sequences = [seq + [padNum]*(max_len - len(seq)) for seq in sequences]
     return sequences
 
 
-def get_embeddings(filestr, word2idx, idx2word, common_idxs, common_words):
+def get_embeddings(filestr, common_idxs, common_words):
     # immediately transpose, so columns/keys are the words
     df = pd.read_csv(filestr, index_col=0, header=None, sep=' ', quoting=3).T
     embed_dim = df.shape[0]  # number of emebdding dimensions
@@ -332,6 +326,7 @@ def trainTestSplit(X, T, ratio=.5):
 
 
 def main():
+    # https://www.kaggle.com/c/jigsaw-toxic-comment-classification-challenge
     toxic_data = pd.read_csv(datapath+'toxic_comments/train.csv')
 
     # pull out targets
@@ -347,21 +342,23 @@ def main():
 
     # process sequence data for the CNN (limit vocab and pad to same length)
     seqs, common_words, common_idxs = trim_vocab(seqs, word2idx, freqs)
-    V = len(common_words)
+    V = max(common_idxs)  # not really the vocab size (just a quick fix)
     print('Total vocabulary size:', len(idx2word))
     print('Trimmed vocabulary size:', V)
 
+    # pad sequences to same length and convert to a 2D numpy matrix (N x Time)
     X = np.array(pad_seqs(seqs))
     print('X shape:', X.shape)
     print('T shape:', labels.shape)
 
     # load and process pre-trained embeddings
+    # http://nlp.stanford.edu/data/glove.6B.zip
     if os.path.isfile(datapath+'/glove_embeddings/glove100_toxic.npy'):
         embeds = np.load(datapath+'/glove_embeddings/glove100_toxic.npy')
     else:
         embeds = get_embeddings(
             datapath+'/glove_embeddings/glove.6B.100d.txt',
-            word2idx, idx2word, common_idxs, common_words
+            common_idxs, common_words
         )
         np.save(datapath+'/glove_embeddings/glove100_toxic.npy', embeds)
     print('Word Embeddings shape:', embeds.shape)
@@ -372,13 +369,16 @@ def main():
     # build CNN and fit to data
     cnn = LanguageCNN(
         V, K,
-        [[3, 100, 32], [3, 32, 64], [3, 64, 128]],  # conv1d layers
-        [2, 2, 2],  # pooling
-        [],  # dense layers
-        [0],  # dropout
+        [[3, 100, 32], [3, 32, 64], [3, 64, 128]],  # conv1d (kernel, in, out)
+        [2, 2, 0],  # pooling
+        [256],  # dense layers
+        [.5, .5],  # dropout
         embeddings=embeds
     )
-    cnn.fit(Xtrain, Ttrain, Xtest, Ttest, epochs=5, batch_sz=200)
+    cnn.fit(
+        Xtrain, Ttrain, Xtest, Ttest,
+        epochs=5, batch_sz=200, print_every=100
+    )
 
 
 if __name__ == '__main__':
