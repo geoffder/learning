@@ -8,7 +8,6 @@ import os.path
 
 import torch
 from torch import nn
-import torch.nn.functional as F
 from torch import optim
 
 
@@ -63,6 +62,14 @@ class Seq2Seq(nn.Module):
         self.logistic = nn.Linear(self.latent_dim_size, self.targ_V)
 
     def forced_teaching(self, X, T):
+        """
+        Takes both input and target (offset by <sos> token) sequences, as the
+        offset targets are fed in to the decoder network, rather than the
+        decoder's own predictions (as they would be during generation). This
+        ensures that the model is able to learn the entire sequence during
+        every pass, rather than de-railing and training on garbage after one
+        false prediction.
+        """
         # convert sequences of indices to word-vector matrices
         X = self.encoder_embed(X)  # shape: (batch, T, D)
         T = self.decoder_embed(T)
@@ -73,64 +80,52 @@ class Seq2Seq(nn.Module):
         # get logits
         return self.logistic(output)
 
-    def batch_translate_fixForTestTranslate(self, X):
-        # convert sequences of indices to word-vector matrices
-        X = self.encoder_embed(X)  # shape: (batch, T, D)
-        _, thought = self.encoder_LSTM(X)
-
-        seqs = []
-        for i in range(len(X.shape[0])):
-            end_of_sequence = False
-            seq = self.decoder_embed(
-                torch.LongTensor([self.targ_w2i['<sos>']]).unsqueeze(0)
-            )
-            while not end_of_sequence:
-                _, (h, _) = self.decoder_LSTM(seq, thought)
-                pred = torch.argmax(self.logistic(h), dim=1)
-                seq = torch.cat([seq, pred], dim=1)
-                if seq[1, -1].cpu().numpy() == self.targ_w2i['<eos>']:
-                    end_of_sequence = True
-            seqs.append(seq)
-
-    def batch_translate(self, X):
-        # convert sequences of indices to word-vector matrices
-        X = self.encoder_embed(X)  # shape: (batch, T, D)
-        _, (enco_h, enco_c) = self.encoder_LSTM(X)
-
-        out = torch.zeros([X.shape[0], self.targ_len]).long().to(device)
-        "Change this to be one input word at a time. (instead of grow input)"
+    def translate(self, X):
+        """
+        Forward pass without teacher forcing. Model will predict the next word
+        of the output based on the translation SO FAR, regardless of whether
+        it is correct or not. Used for testing during fitting, and also for
+        translating sequences after training is over.
+        """
+        out = np.zeros((X.shape[0], self.targ_len))
         for i in range(X.shape[0]):
-            seq = self.decoder_embed(
-                torch.LongTensor(
-                    [self.targ_w2i['<sos>']]).unsqueeze(0).to(device)
-            )
+            _, (h, c) = self.encoder_LSTM(self.encoder_embed(X[i].view(1, -1)))
+            seq = [self.targ_w2i['<sos>']]
             for t in range(self.targ_len):
-                _, (h, _) = self.decoder_LSTM(
-                    seq, (enco_h[-1, t, :].view(1, 1, -1),
-                          enco_c[-1, t, :].view(1, 1, -1))
+                vec = self.decoder_embed(
+                    torch.LongTensor([[seq[-1]]]).to(device)
                 )
-                pred = torch.argmax(self.logistic(h[-1, -1, :])).long()
-                seq = torch.cat([seq, pred.view(1, -1)], dim=1)
-            out[i, :] = seq
+                _, (h, c) = self.decoder_LSTM(vec, (h, c))
 
-        return out
+                pred = torch.argmax(self.logistic(h[-1])).long()
+                seq.append(pred.detach().cpu().tolist())
+                if seq[-1] == self.targ_w2i['<eos>']:
+                    # print([self.targ_i2w[idx] for idx in seq])
+                    break
 
-    def fit(self, inputs, targets, forced_inputs, targ_w2i, lr=1e-4, epochs=40,
-            batch_sz=200, print_every=50):
+            seq = seq[1:] + [self.targ_w2i['<pad>']]*(self.targ_len-t-1)
+            out[i, :] = np.array(seq)  # ignore <sos> token
+        return torch.from_numpy(out).long().to(device)
+
+    def fit(self, inputs, targets, forced_inputs, targ_w2i, targ_i2w,
+            lr=1e-4, epochs=40, batch_sz=200, print_every=50):
 
             N = inputs.shape[0]  # number of samples
             self.targ_w2i = targ_w2i  # word to index for target vocabulary
+            self.targ_i2w = targ_i2w  # index to word for target vocabulary
 
             # send data to GPU
             inputs = torch.from_numpy(inputs).long().to(device)
             targets = torch.from_numpy(targets).long().to(device)
             forced = torch.from_numpy(forced_inputs).long().to(device)
 
-            self.loss = nn.CrossEntropyLoss(reduction='mean').to(device)
+            self.loss = nn.CrossEntropyLoss(
+                reduction='sum', ignore_index=0).to(device)
+            # self.loss = nn.CrossEntropyLoss(reduction='mean').to(device)
             self.optimizer = optim.Adam(self.parameters(), lr=lr)
 
             n_batches = N // batch_sz
-            train_costs, test_accs = [], []
+            train_costs, train_accs, test_accs = [], [], []
             for i in range(epochs):
                 cost = 0
                 print("epoch:", i, "n_batches:", n_batches)
@@ -140,17 +135,27 @@ class Seq2Seq(nn.Module):
                 forced = forced[inds]
                 for j in range(n_batches):
                     Xbatch = inputs[j*batch_sz:(j*batch_sz+batch_sz)]
+                    Tbatch = targets[j*batch_sz:(j*batch_sz+batch_sz)]
                     Fbatch = forced[j*batch_sz:(j*batch_sz+batch_sz)]
 
-                    cost += self.train_step(Xbatch, Fbatch)
+                    cost += self.train_step(Xbatch, Tbatch, Fbatch)
 
                     if j % print_every == 0:
-                        # accuracy on test set
-                        test_acc = self.score(inputs, targets)
-                        print("test accuracy: %.2f" % (test_acc))
+                        # cost and accuracy during forced teaching
+                        train_cost, train_acc = self.train_score(
+                            Xbatch, Tbatch, Fbatch
+                        )
+                        print(
+                            'train cost: %.2f, train acc: %.3f'
+                            % (train_cost, train_acc)
+                        )
+                        # accuracy during 'free' translation (non-forced)
+                        test_acc = self.trans_score(Xbatch, Tbatch)
+                        print("test accuracy: %.3f" % (test_acc))
 
                 # for plotting
                 train_costs.append(cost / n_batches)
+                train_accs.append(train_acc)
                 test_accs.append(test_acc)
 
             # plot cost and accuracy progression
@@ -158,21 +163,23 @@ class Seq2Seq(nn.Module):
             axes[0].plot(train_costs, label='training')
             axes[0].set_xlabel('Epoch')
             axes[0].set_ylabel('Cost')
-            axes[1].plot(test_accs, label='validation')
+            axes[1].plot(train_accs, label='forced teaching')
+            axes[1].plot(test_accs, label='translation')
             axes[1].set_xlabel('Epoch')
             axes[1].set_ylabel('Accuracy')
             plt.legend()
             fig.tight_layout()
             plt.show()
 
-    def train_step(self, inputs, forced_targets):
+    def train_step(self, inputs, targets, forced_inputs):
         self.train()  # set the model to training mode
         self.optimizer.zero_grad()  # Reset gradient
 
         # Forward
-        logits = self.forced_teaching(inputs, forced_targets)
-        # print(logits.shape)
-        output = self.loss.forward(logits.transpose(2, 1), forced_targets)
+        logits = self.forced_teaching(inputs, forced_inputs)
+        # output = self.loss.forward(
+        #     logits.view(-1, logits.shape[2]), targets.view(-1))
+        output = self.loss.forward(logits.transpose(2, 1), targets)
 
         # Backward
         output.backward()
@@ -180,23 +187,75 @@ class Seq2Seq(nn.Module):
 
         return output.item()
 
-    def get_cost(self, inputs, labels):
+    def train_score(self, inputs, targets, forced_inputs, pad_corr=False):
+        """
+        Get cost and accuracy of a forced_teaching run. Measure of how well
+        model is able to predict the next word of the translated sequence,
+        using the correct sequence as the input, regardless of the actual
+        prediction.
+        """
+        # forward pass using forced teaching
         self.eval()  # set the model to testing mode
         with torch.no_grad():
-            # Forward
-            logits = self.forward(inputs)
-            output = self.loss.forward(logits, labels)
-        return output.item()
+            logits = self.forced_teaching(inputs, forced_inputs)
+            output = self.loss.forward(logits.transpose(2, 1), targets)
+
+        # torch => numpy
+        labels = targets.cpu().numpy()
+        predictions = torch.argmax(logits, dim=2).long().cpu().numpy()
+        labels[labels == 0] = 2  # predictions are "padded" with 2 (<eos>)
+
+        if pad_corr:
+            # estimate accuracy with proportion of padding tokens removed
+            pads = labels.size - np.count_nonzero(targets)
+            acc = (np.sum(labels == predictions) - pads) / (labels.size - pads)
+        else:
+            acc = np.mean(labels == predictions)
+
+        # cost and accuracy
+        return output.item(), acc
 
     def predict(self, inputs):
+        "Forward pass using free-translation (not teacher forced)."
         self.eval()
         with torch.no_grad():
-            logits = self.batch_translate(inputs)
-        return logits.data.cpu().numpy().argmax(axis=1)
+            seqs = self.translate(inputs)
+        return seqs.detach().cpu().numpy()
 
-    def score(self, inputs, labels):
+    def trans_score(self, inputs, labels, pad_corr=False):
+        "Calculate accuracy of translation. Option to adjust for padding."
         predictions = self.predict(inputs)
-        return np.mean(labels.cpu().numpy() == predictions)
+        labels = labels.cpu().numpy()
+        if pad_corr:
+            pads = labels.size - np.count_nonzero(labels)
+            acc = (np.sum(labels == predictions) - pads) / (labels.size - pads)
+        else:
+            acc = np.mean(labels == predictions)
+        return acc
+
+    def demo(self, sequences, in_i2w):
+        """
+        Take in inputs sequences (index representation of 'from' language),
+        translate in to target language and display results. For checking how
+        well model the model has fit the machine translation task.
+        """
+        inputs = torch.from_numpy(sequences).long().to(device)
+        while True:
+            idx = np.random.randint(0, sequences.shape[0])
+            out = self.translate(inputs[idx].view(1, -1))
+            trans = [
+                self.targ_i2w[i] if i > 2 else ''
+                for i in out.detach().cpu().numpy().flatten()
+            ]
+            print(
+                ' '.join([in_i2w[i] if i > 2 else '' for i in sequences[idx]]),
+                end=' '
+            )
+            print('=> ' + ' '.join(trans), end='\n\n')
+            again = input(
+                "Show another translation? Enter 'n' to quit\n")
+            if again == 'n':
+                break
 
 
 def load_samples(pth, num_samples):
@@ -238,10 +297,10 @@ def process(strings):
     frequencies can be used to trim down the vocabulary to the most common
     words if the original size is too great.
     """
-    word_index_map = {'PAD_TOKEN': 0, '<sos>': 1, '<eos>': 2}
+    word_index_map = {'<pad>': 0, '<sos>': 1, '<eos>': 2}
     current_index = 3  # 0 is reserved for padding
     sequences = []
-    index_word_map = ['PAD_TOKEN', '<sos>', '<eos>']
+    index_word_map = ['<pad>', '<sos>', '<eos>']
     freqs = {'<sos>': 0, '<eos>': 0}
     for s in strings:
         sequence = []
@@ -346,15 +405,16 @@ def main():
     rnn = Seq2Seq(
         inputs.shape[1], targets.shape[1],  # maximum sequence lengths
         input_V, target_V,  # input and target vocabulary sizes
-        100,  # LSTM latent dimension size
+        256,  # LSTM latent dimension size
         1,  # number of stacked LSTM layers
-        embeddings=embeds
+        embeddings=embeds,
+        LSTM_drop=0
     )
     rnn.fit(
-        inputs, targets, forced_inputs, target_w2i,
-        lr=1e-3, epochs=50, batch_sz=200
+        inputs, targets, forced_inputs, target_w2i, target_i2w,
+        lr=1e-2, epochs=40, batch_sz=200
     )
-
+    rnn.demo(inputs, input_i2w)
 
 
 if __name__ == '__main__':
