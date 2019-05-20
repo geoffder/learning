@@ -15,12 +15,18 @@ device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 torch.backends.cudnn.benchmark = True
 
 
+class Contextualizer(nn.Module):
+    def __init__(self):
+        super(Contextualizer, self).__init__()
+
+
 class Attention(nn.Module):
     """
     Sequence-to-sequence machine translation model, with Attention.
     """
-    def __init__(self, in_len, targ_len, in_V, targ_V, latent_dim_size,
-                 num_LSTM_layers, embeddings=None, LSTM_drop=0):
+    def __init__(self, in_len, targ_len, in_V, targ_V, encode_dim_sz,
+                 decode_dim_sz, num_LSTM_layers, teacher_forcing=True,
+                 embeddings=None, LSTM_drop=0):
         super(Attention, self).__init__()
         # data shape
         self.in_len = in_len
@@ -28,8 +34,10 @@ class Attention(nn.Module):
         self.in_V = in_V  # input vocabulary size
         self.targ_V = targ_V  # target vocabulary size
         # architecture
-        self.latent_dim_size = latent_dim_size  # same for encoder and decoder
+        self.encode_dim_sz = encode_dim_sz  # encoder latent dimensions
+        self.decode_dim_sz = decode_dim_sz  # decoder latent dimensions
         self.num_LSTM_layers = num_LSTM_layers
+        self.teaching_forcing = teacher_forcing
         self.LSTM_drop = LSTM_drop
         # assemble network and move to GPU
         self.build(embeddings)
@@ -43,22 +51,36 @@ class Attention(nn.Module):
                 freeze=True
             )
         else:
+            # stick with 100 embedding dimensions for simplicity
             self.encoder_embed = nn.Embedding(self.in_V, 100, padding_idx=0)
-        # decoder network word embeddings (randomly initialized)
-        self.decoder_embed = nn.Embedding(self.targ_V, 100, padding_idx=0)
+
+        # attention block, takes last decoder state and encoder output
+        # returns context vector for input into decoder
+        self.context_block = Contextualizer(
+            self.encode_dim_sz, self.decode_dim_sz, batch_first=True
+        )
 
         # encoder and decoder recurrent networks
         self.encoder_LSTM = nn.LSTM(
-            100, self.latent_dim_size, self.num_LSTM_layers,
+            100, self.encode_dim_sz, self.num_LSTM_layers,
             bias=True, dropout=self.LSTM_drop, batch_first=True
         )
         self.decoder_LSTM = nn.LSTM(
-            100, self.latent_dim_size, self.num_LSTM_layers,
+            self.encode_dim_sz*2, self.decode_dim_sz, self.num_LSTM_layers,
             bias=True, dropout=self.LSTM_drop, batch_first=True
         )
 
+        # teacher forcing layers (decoder embeddings and dim reduction)
+        if self.teaching_forcing:
+            # decoder network word embeddings (randomly initialized)
+            self.decoder_embed = nn.Embedding(self.targ_V, 100, padding_idx=0)
+            # dimensionality reduction layer (keep at self.encode_dim_sz*2)
+            self.dim_reducer = nn.Linear(
+                self.encode_dim_sz*2 + 100, self.encode_dim_sz*2
+            )
+
         # fully connected layers for decoder -> word probabilities
-        self.logistic = nn.Linear(self.latent_dim_size, self.targ_V)
+        self.logistic = nn.Linear(self.decode_dim_sz, self.targ_V)
 
     def forced_teaching(self, X, T):
         """
