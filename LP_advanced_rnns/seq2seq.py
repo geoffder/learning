@@ -1,10 +1,9 @@
 import numpy as np
-import pandas as pd
 import matplotlib.pyplot as plt
 
-from sklearn.utils import shuffle
-import string
 import os.path
+from nlp_utils import load_samples, pad_seqs, process, get_embeddings
+from nlp_utils import trainTestSplit_3way
 
 import torch
 from torch import nn
@@ -107,20 +106,23 @@ class Seq2Seq(nn.Module):
             out[i, :] = np.array(seq)  # ignore <sos> token
         return torch.from_numpy(out).long().to(device)
 
-    def fit(self, inputs, targets, forced_inputs, targ_w2i, targ_i2w,
-            lr=1e-4, epochs=40, batch_sz=200, print_every=50):
+    def fit(self, Xtrain, Ttrain, Ftrain, Xtest, Ttest, Ftest, targ_w2i,
+            targ_i2w, lr=1e-4, epochs=40, batch_sz=200, print_every=50):
 
-            N = inputs.shape[0]  # number of samples
+            N = Xtrain.shape[0]  # number of samples
             self.targ_w2i = targ_w2i  # word to index for target vocabulary
             self.targ_i2w = targ_i2w  # index to word for target vocabulary
 
             # send data to GPU
-            inputs = torch.from_numpy(inputs).long().to(device)
-            targets = torch.from_numpy(targets).long().to(device)
-            forced = torch.from_numpy(forced_inputs).long().to(device)
+            Xtrain = torch.from_numpy(Xtrain).long().to(device)  # inputs
+            Xtest = torch.from_numpy(Xtest).long().to(device)
+            Ttrain = torch.from_numpy(Ttrain).long().to(device)  # targets
+            Ttest = torch.from_numpy(Ttest).long().to(device)
+            Ftrain = torch.from_numpy(Ftrain).long().to(device)  # forced
+            Ftest = torch.from_numpy(Ftest).long().to(device)
 
             self.loss = nn.CrossEntropyLoss(
-                reduction='sum', ignore_index=0).to(device)
+                reduction='mean', ignore_index=0).to(device)
             # self.loss = nn.CrossEntropyLoss(reduction='mean').to(device)
             self.optimizer = optim.Adam(self.parameters(), lr=lr)
 
@@ -130,33 +132,38 @@ class Seq2Seq(nn.Module):
                 cost = 0
                 print("epoch:", i, "n_batches:", n_batches)
                 # shuffle dataset for next epoch of batches
-                inds = torch.randperm(inputs.size()[0])
-                inputs, targets = inputs[inds], targets[inds]
-                forced = forced[inds]
+                inds = torch.randperm(Xtrain.size()[0])
+                Xtrain, Ttrain = Xtrain[inds], Ttrain[inds]
+                Ftrain = Ftrain[inds]
                 for j in range(n_batches):
-                    Xbatch = inputs[j*batch_sz:(j*batch_sz+batch_sz)]
-                    Tbatch = targets[j*batch_sz:(j*batch_sz+batch_sz)]
-                    Fbatch = forced[j*batch_sz:(j*batch_sz+batch_sz)]
+                    Xbatch = Xtrain[j*batch_sz:(j*batch_sz+batch_sz)]
+                    Tbatch = Ttrain[j*batch_sz:(j*batch_sz+batch_sz)]
+                    Fbatch = Ftrain[j*batch_sz:(j*batch_sz+batch_sz)]
 
                     cost += self.train_step(Xbatch, Tbatch, Fbatch)
 
                     if j % print_every == 0:
-                        # cost and accuracy during forced teaching
-                        train_cost, train_acc = self.train_score(
-                            Xbatch, Tbatch, Fbatch
+                        # validation cost and accuracy with forced teaching
+                        forced_cost, forced_acc = self.teaching_score(
+                            Xtest, Ttest, Ftest
                         )
                         print(
-                            'train cost: %.2f, train acc: %.3f'
-                            % (train_cost, train_acc)
+                            'teaching cost: %.2f, teaching acc: %.3f'
+                            % (forced_cost, forced_acc)
                         )
                         # accuracy during 'free' translation (non-forced)
-                        test_acc = self.trans_score(Xbatch, Tbatch)
-                        print("test accuracy: %.3f" % (test_acc))
+                        # only sample, since it is much slower than forced
+                        inds = torch.randperm(Xtest.size()[0])
+                        Xtest, Ttest = Xtest[inds], Ttest[inds]
+                        trans_acc = self.trans_score(
+                            Xtest[:batch_sz], Ttest[:batch_sz]
+                        )
+                        print("translation accuracy: %.3f" % (trans_acc))
 
                 # for plotting
                 train_costs.append(cost / n_batches)
-                train_accs.append(train_acc)
-                test_accs.append(test_acc)
+                train_accs.append(forced_acc)
+                test_accs.append(trans_acc)
 
             # plot cost and accuracy progression
             fig, axes = plt.subplots(1, 2)
@@ -187,7 +194,7 @@ class Seq2Seq(nn.Module):
 
         return output.item()
 
-    def train_score(self, inputs, targets, forced_inputs, pad_corr=False):
+    def teaching_score(self, inputs, targets, forced_inputs, pad_corr=False):
         """
         Get cost and accuracy of a forced_teaching run. Measure of how well
         model is able to predict the next word of the translated sequence,
@@ -258,117 +265,6 @@ class Seq2Seq(nn.Module):
                 break
 
 
-def load_samples(pth, num_samples):
-    input_texts, target_texts, target_texts_inputs = [], [], []
-    for i, line in enumerate(open(pth+'translation/fra.txt'), 1):
-        # only keep a limited number of samples
-        if i > num_samples:
-            break
-
-        # input and target are separated by tab
-        if '\t' not in line:
-            continue
-
-        # split up the input and translation
-        input_text, translation = line.rstrip().split('\t')
-        input_texts.append(input_text)
-        # target input used for teacher-forcing during training
-        target_texts.append(translation + ' <eos>')
-        target_texts_inputs.append('<sos> ' + translation)
-
-    print("num samples:", len(input_texts))
-    return input_texts, target_texts, target_texts_inputs
-
-
-def tokenizer(s, keep_punc=False):
-    "Remove puncutation, downcase and split on spaces and return a list"
-    if not keep_punc:
-        s = s.translate(str.maketrans('', '', string.punctuation))
-    s = s.lower()  # downcase
-    return s.split()
-
-
-def process(strings):
-    """
-    Take in list of comments (strings) and tokenize them to build word index
-    mappings to allowing conversion of comments into word vectors. Outputs are
-    sequences of indices (used to map words to embeddings), the word->index
-    and index->word) mappings and the frequencies of each word. The
-    frequencies can be used to trim down the vocabulary to the most common
-    words if the original size is too great.
-    """
-    word_index_map = {'<pad>': 0, '<sos>': 1, '<eos>': 2}
-    current_index = 3  # 0 is reserved for padding
-    sequences = []
-    index_word_map = ['<pad>', '<sos>', '<eos>']
-    freqs = {'<sos>': 0, '<eos>': 0}
-    for s in strings:
-        sequence = []
-        tokens = tokenizer(s, keep_punc=True)
-        for token in tokens:
-            if token not in word_index_map:
-                word_index_map[token] = current_index
-                current_index += 1
-                index_word_map.append(token)
-                freqs[token] = 1
-            else:
-                freqs[token] += 1
-            sequence.append(word_index_map[token])
-        sequences.append(sequence)
-
-    return sequences, word_index_map, index_word_map, freqs
-
-
-def pad_seqs(sequences, padNum=0, front_pad=False):
-    """
-    Take in list of lists (sequences of variable length), and pad them with
-    a given number (default: 0) to the same length (longest in sequences).
-    """
-    max_len = 0
-    for i, seq in enumerate(sequences):
-        max_len = len(seq) if len(seq) > max_len else max_len
-
-    if not front_pad:
-        sequences = [seq + [padNum]*(max_len - len(seq)) for seq in sequences]
-    else:
-        sequences = [[padNum]*(max_len - len(seq)) + seq for seq in sequences]
-    return sequences
-
-
-def get_embeddings(filestr, common_idxs, common_words):
-    # immediately transpose, so columns/keys are the words
-    df = pd.read_csv(filestr, index_col=0, header=None, sep=' ', quoting=3).T
-    embed_dim = df.shape[0]  # number of emebdding dimensions
-    embed = np.zeros((max(common_idxs)+1, embed_dim))  # to be filled
-
-    # set-up a progress bar since this takes a bit
-    tick = np.floor(len(common_words)/50)  # for progress bar (2% each)
-    print('Importing pre-trained word-embeddings...')
-    print('['+' '*50+']', end='\r', flush=True)  # return allows overwritting
-
-    # fill in rows of embedding matrix with (trimmed) vocabulary
-    for prog, (idx, word) in enumerate(zip(common_idxs, common_words), 1):
-        embed[idx, :] = df.get(word, default=1e-6)  # try not zero, embed kills
-        if prog % tick == 0:
-            # overwrite progress bar with an additional tick
-            ticks = int(np.floor(prog/tick))
-            print('[' + '='*ticks + ' '*(50-ticks) + ']', end='\r', flush=True)
-    print('')  # newline
-    return embed
-
-
-def trainTestSplit(X, T, ratio=.5):
-    '''
-    Shuffle dataset and split into training and validation sets given a
-    train:test ratio.
-    '''
-    X, T = shuffle(X, T)
-    N = X.shape[0]
-    Xtrain, Ttrain = X[:int(N*ratio)], T[:int(N*ratio)]
-    Xtest, Ttest = X[int(N*ratio):], T[int(N*ratio):]
-    return Xtrain, Ttrain, Xtest, Ttest
-
-
 def main():
     inputs, targets, forced_inputs = load_samples(datapath, 10000)
 
@@ -389,6 +285,11 @@ def main():
     print('inputs shape:', inputs.shape)
     print('targets shape:', targets.shape)
     print('forced_inputs shape:', forced_inputs.shape)
+
+    # train-test split
+    Xtrain, Ttrain, Ftrain, Xtest, Ttest, Ftest = trainTestSplit_3way(
+        inputs, targets, forced_inputs, ratio=.8
+    )
 
     # load and process pre-trained embeddings
     # http://nlp.stanford.edu/data/glove.6B.zip
@@ -411,10 +312,10 @@ def main():
         LSTM_drop=0
     )
     rnn.fit(
-        inputs, targets, forced_inputs, target_w2i, target_i2w,
+        Xtrain, Ttrain, Ftrain, Xtest, Ttest, Ftest, target_w2i, target_i2w,
         lr=1e-2, epochs=40, batch_sz=200
     )
-    rnn.demo(inputs, input_i2w)
+    rnn.demo(Xtest, input_i2w)
 
 
 if __name__ == '__main__':
