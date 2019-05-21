@@ -38,7 +38,7 @@ class Contextualizer(nn.Module):
     def forward(self, state, code):
         state = state.transpose(0, 1)  # from (TxNxD) to (NxTxD)
         Z = torch.cat([state.expand(-1, code.shape[1], -1), code], dim=2)
-        alpha = F.softmax(self.layer2(self.layer1(Z)), dim=1)
+        alpha = F.softmax(self.layer2(torch.tanh(self.layer1(Z))), dim=1)
 
         # shapes: alpha (NxTx1), code (NxTxD). matmul does 2d mul with batches
         context = torch.matmul(alpha.transpose(1, 2), code)
@@ -146,7 +146,7 @@ class Attention(nn.Module):
                 # tack previous (forced) output on to context vector
                 context = torch.cat([context, forced], dim=2)
                 if self.blend_context:
-                    context = self.dim_reducer(context)
+                    context = torch.tanh(self.dim_reducer(context))
 
             # get next decoder output (and update states)
             _, (s, c) = self.decoder_LSTM(context, (s, c))
@@ -186,7 +186,7 @@ class Attention(nn.Module):
                     context = torch.cat([context, vec], dim=2)
                     # blend previous output in with context vector
                     if self.blend_context:
-                        context = self.dim_reducer(context)
+                        context = torch.tanh(self.dim_reducer(context))
 
                 # get next decoder output (and update states)
                 _, (s, c) = self.decoder_LSTM(context, (s, c))
