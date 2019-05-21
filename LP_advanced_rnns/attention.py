@@ -17,11 +17,14 @@ torch.backends.cudnn.benchmark = True
 
 
 class Contextualizer(nn.Module):
-    def __init__(self, encode_dim_sz, decode_dim_sz, batch_first=True):
+    """
+
+    Note: Assumes batch_first LSTMs are being used.
+    """
+    def __init__(self, encode_dim_sz, decode_dim_sz):
         super(Contextualizer, self).__init__()
         self.encode_dim_sz = encode_dim_sz  # encoder latent dimensions
         self.decode_dim_sz = decode_dim_sz  # decoder latent dimensions
-        self.batch_first = batch_first  # batch dimension before time
         self.build()
 
     def build(self):
@@ -34,12 +37,8 @@ class Contextualizer(nn.Module):
 
     def forward(self, state, code):
         state = state.transpose(0, 1)  # from (TxNxD) to (NxTxD)
-        if self.batch_first:
-            Z = torch.cat([state.expand(-1, code.shape[1], -1), code], dim=2)
-            alpha = F.softmax(self.layer2(self.layer1(Z)), dim=1)
-        else:
-            Z = torch.cat([state.expand(code.shape[1], -1, -1), code], dim=2)
-            alpha = F.softmax(self.layer2(self.layer1(Z)), dim=0)
+        Z = torch.cat([state.expand(-1, code.shape[1], -1), code], dim=2)
+        alpha = F.softmax(self.layer2(self.layer1(Z)), dim=1)
 
         # shapes: alpha (NxTx1), code (NxTxD). matmul does 2d mul with batches
         context = torch.matmul(alpha.transpose(1, 2), code)
@@ -84,7 +83,7 @@ class Attention(nn.Module):
         # attention block, takes last decoder state and encoder output
         # returns context vector for input into decoder
         self.context_block = Contextualizer(
-            self.encode_dim_sz, self.decode_dim_sz, batch_first=True
+            self.encode_dim_sz, self.decode_dim_sz
         )
 
         # encoder and decoder recurrent networks
