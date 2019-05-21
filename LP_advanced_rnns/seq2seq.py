@@ -143,6 +143,10 @@ class Seq2Seq(nn.Module):
                     cost += self.train_step(Xbatch, Tbatch, Fbatch)
 
                     if j % print_every == 0:
+                        # shuffle test set
+                        inds = torch.randperm(Xtest.size()[0])
+                        Xtest, Ttest = Xtest[inds], Ttest[inds]
+                        Ftest = Ftest[inds]
                         # validation cost and accuracy with forced teaching
                         forced_cost, forced_acc = self.teaching_score(
                             Xtest, Ttest, Ftest
@@ -153,8 +157,6 @@ class Seq2Seq(nn.Module):
                         )
                         # accuracy during 'free' translation (non-forced)
                         # only sample, since it is much slower than forced
-                        inds = torch.randperm(Xtest.size()[0])
-                        Xtest, Ttest = Xtest[inds], Ttest[inds]
                         trans_acc = self.trans_score(
                             Xtest[:batch_sz], Ttest[:batch_sz]
                         )
@@ -293,14 +295,14 @@ def main():
 
     # load and process pre-trained embeddings
     # http://nlp.stanford.edu/data/glove.6B.zip
-    if os.path.isfile(datapath+'glove_embeddings/glove100_toxic.npy'):
-        embeds = np.load(datapath+'glove_embeddings/glove100_toxic.npy')
+    if os.path.isfile(datapath+'glove_embeddings/glove100_trans.npy'):
+        embeds = np.load(datapath+'glove_embeddings/glove100_trans.npy')
     else:
         embeds = get_embeddings(
             datapath+'glove_embeddings/glove.6B.100d.txt',
             [i for i in range(len(input_words))], input_words
         )
-        np.save(datapath+'glove_embeddings/glove100_toxic.npy', embeds)
+        np.save(datapath+'glove_embeddings/glove100_trans.npy', embeds)
     print('Word Embeddings shape:', embeds.shape)
 
     rnn = Seq2Seq(
