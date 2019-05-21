@@ -25,19 +25,25 @@ class Contextualizer(nn.Module):
         self.build()
 
     def build(self):
+        # reducing down to encoder dims here, could make it a variable though
         self.layer1 = nn.Linear(
             self.decode_dim_sz+self.encode_dim_sz*2, self.encode_dim_sz*2
         )
-        self.layer2 = nn.Linear(self.encode_dim_sz*2, self.encode_dim_sz*2)
+        # one alpha weight per timestep
+        self.layer2 = nn.Linear(self.encode_dim_sz*2, 1)
 
     def forward(self, state, code):
+        state = state.transpose(0, 1)  # from (TxNxD) to (NxTxD)
         if self.batch_first:
             Z = torch.cat([state.expand(-1, code.shape[1], -1), code], dim=2)
             alpha = F.softmax(self.layer2(self.layer1(Z)), dim=1)
         else:
             Z = torch.cat([state.expand(code.shape[1], -1, -1), code], dim=2)
             alpha = F.softmax(self.layer2(self.layer1(Z)), dim=0)
-        return alpha @ code  # dot product of alpha and encoding = context
+
+        # shapes: alpha (NxTx1), code (NxTxD). matmul does 2d mul with batches
+        context = torch.matmul(alpha.transpose(1, 2), code)
+        return context
 
 
 class Attention(nn.Module):
@@ -46,7 +52,7 @@ class Attention(nn.Module):
     """
     def __init__(self, in_len, targ_len, in_V, targ_V, encode_dim_sz,
                  decode_dim_sz, num_LSTM_layers, teacher_forcing=True,
-                 embeddings=None, LSTM_drop=0):
+                 blend_context=False, embeddings=None, LSTM_drop=0):
         super(Attention, self).__init__()
         # data shape
         self.in_len = in_len
@@ -57,7 +63,8 @@ class Attention(nn.Module):
         self.encode_dim_sz = encode_dim_sz  # encoder latent dimensions
         self.decode_dim_sz = decode_dim_sz  # decoder latent dimensions
         self.num_LSTM_layers = num_LSTM_layers
-        self.teaching_forcing = teacher_forcing
+        self.teacher_forcing = teacher_forcing
+        self.blend_context = blend_context  # mix last vector with context
         self.LSTM_drop = LSTM_drop
         # assemble network and move to GPU
         self.build(embeddings)
@@ -86,24 +93,29 @@ class Attention(nn.Module):
             bias=True, bidirectional=True, dropout=self.LSTM_drop,
             batch_first=True
         )
+        # teacher forcing concats embedding dim onto context vector. If
+        # blend_context is used, dimensionality is reduced back down.
+        in_sz = self.encode_dim_sz*2
+        in_sz += 100 if self.teacher_forcing and not self.blend_context else 0
         self.decoder_LSTM = nn.LSTM(
-            self.encode_dim_sz*2, self.decode_dim_sz, self.num_LSTM_layers,
+            in_sz, self.decode_dim_sz, self.num_LSTM_layers,
             bias=True, dropout=self.LSTM_drop, batch_first=True
         )
 
         # teacher forcing layers (decoder embeddings and dim reduction)
-        if self.teaching_forcing:
+        if self.teacher_forcing:
             # decoder network word embeddings (randomly initialized)
             self.decoder_embed = nn.Embedding(self.targ_V, 100, padding_idx=0)
             # dimensionality reduction layer (keep at self.encode_dim_sz*2)
-            self.dim_reducer = nn.Linear(
-                self.encode_dim_sz*2 + 100, self.encode_dim_sz*2
-            )
+            if self.blend_context:
+                self.dim_reducer = nn.Linear(
+                    self.encode_dim_sz*2 + 100, self.encode_dim_sz*2
+                )
 
         # fully connected layers for decoder -> word probabilities
         self.logistic = nn.Linear(self.decode_dim_sz, self.targ_V)
 
-    def forced_teaching(self, X, T):
+    def teaching(self, X, T):
         """
         Takes both input and target (offset by <sos> token) sequences, as the
         offset targets are fed in to the decoder network, rather than the
@@ -111,19 +123,33 @@ class Attention(nn.Module):
         ensures that the model is able to learn the entire sequence during
         every pass, rather than de-railing and training on garbage after one
         false prediction.
+
+        Note: If teacher_forcing is not activated, the target sequences are
+        never used. Without it, the input to the decoder LSTM is just the
+        context vector (attention).
         """
         # convert sequences of indices to word-vector matrices
-        X = self.encoder_embed(X)  # shape: (batch, T, D*2)
+        X = self.encoder_embed(X)  # shape: (batch, T, D)
+        if self.teacher_forcing:
+            T = self.decoder_embed(T)
         # get bi-directional encoding of input sequence
-        encoding, _ = self.encoder_LSTM(X)
+        encoding, _ = self.encoder_LSTM(X)  # shape: (batch, T, D*2)
 
         # loop over time and generate output with decoder using attention
         output = []
-        s = torch.zeros([1, 1, self.decode_dim_sz]).float().to(device)
-        c = torch.zeros([1, 1, self.decode_dim_sz]).float().to(device)
+        s = torch.zeros([1, X.shape[0], self.decode_dim_sz]).float().to(device)
+        c = torch.zeros([1, X.shape[0], self.decode_dim_sz]).float().to(device)
         for t in range(self.targ_len):
+            # calculate context with with s(t-1) and encoder output
             context = self.context_block(s, encoding)
-            context = torch.cat([context, T[:, t, :].unsqueeze(1)], dim=2)
+            if self.teacher_forcing:
+                forced = T[:, t, :].unsqueeze(1)  # vector for correct output
+                # tack previous (forced) output on to context vector
+                context = torch.cat([context, forced], dim=2)
+                if self.blend_context:
+                    context = self.dim_reducer(context)
+
+            # get next decoder output (and update states)
             _, (s, c) = self.decoder_LSTM(context, (s, c))
             output.append(s.squeeze())  # remove time dimension
 
@@ -137,21 +163,37 @@ class Attention(nn.Module):
         of the output based on the translation SO FAR, regardless of whether
         it is correct or not. Used for testing during fitting, and also for
         translating sequences after training is over.
+
+        Note: only adds previous output embedding to context if
+        teacher_forcing is being used. Quite slow. Try making a batched version
+        as an exercise and see how much faster I can get it. 
         """
         out = np.zeros((X.shape[0], self.targ_len))
         for i in range(X.shape[0]):
-            _, (h, c) = self.encoder_LSTM(self.encoder_embed(X[i].view(1, -1)))
+            s = torch.zeros(
+                [1, 1, self.decode_dim_sz]).float().to(device)
+            c = torch.zeros(
+                [1, 1, self.decode_dim_sz]).float().to(device)
+            in_embed = self.encoder_embed(X[i].view(1, -1))
+            encoding, _ = self.encoder_LSTM(in_embed)
             seq = [self.targ_w2i['<sos>']]
             for t in range(self.targ_len):
-                vec = self.decoder_embed(
-                    torch.LongTensor([[seq[-1]]]).to(device)
-                )
-                _, (h, c) = self.decoder_LSTM(vec, (h, c))
+                # calculate context with with s(t-1) and encoder output
+                context = self.context_block(s, encoding)
+                if self.teacher_forcing:
+                    vec = self.decoder_embed(
+                        torch.LongTensor([[seq[-1]]]).to(device)
+                    )
+                    context = torch.cat([context, vec], dim=2)
+                    # blend previous output in with context vector
+                    if self.blend_context:
+                        context = self.dim_reducer(context)
 
-                pred = torch.argmax(self.logistic(h[-1])).long()
+                # get next decoder output (and update states)
+                _, (s, c) = self.decoder_LSTM(context, (s, c))
+                pred = torch.argmax(self.logistic(s[-1])).long()
                 seq.append(pred.detach().cpu().tolist())
                 if seq[-1] == self.targ_w2i['<eos>']:
-                    # print([self.targ_i2w[idx] for idx in seq])
                     break
 
             seq = seq[1:] + [self.targ_w2i['<pad>']]*(self.targ_len-t-1)
@@ -195,6 +237,10 @@ class Attention(nn.Module):
                     cost += self.train_step(Xbatch, Tbatch, Fbatch)
 
                     if j % print_every == 0:
+                        # shuffle test set
+                        inds = torch.randperm(Xtest.size()[0])
+                        Xtest, Ttest = Xtest[inds], Ttest[inds]
+                        Ftest = Ftest[inds]
                         # validation cost and accuracy with forced teaching
                         forced_cost, forced_acc = self.teaching_score(
                             Xtest, Ttest, Ftest
@@ -205,8 +251,6 @@ class Attention(nn.Module):
                         )
                         # accuracy during 'free' translation (non-forced)
                         # only sample, since it is much slower than forced
-                        inds = torch.randperm(Xtest.size()[0])
-                        Xtest, Ttest = Xtest[inds], Ttest[inds]
                         trans_acc = self.trans_score(
                             Xtest[:batch_sz], Ttest[:batch_sz]
                         )
@@ -235,9 +279,7 @@ class Attention(nn.Module):
         self.optimizer.zero_grad()  # Reset gradient
 
         # Forward
-        logits = self.forced_teaching(inputs, forced_inputs)
-        # output = self.loss.forward(
-        #     logits.view(-1, logits.shape[2]), targets.view(-1))
+        logits = self.teaching(inputs, forced_inputs)
         output = self.loss.forward(logits.transpose(2, 1), targets)
 
         # Backward
@@ -256,7 +298,7 @@ class Attention(nn.Module):
         # forward pass using forced teaching
         self.eval()  # set the model to testing mode
         with torch.no_grad():
-            logits = self.forced_teaching(inputs, forced_inputs)
+            logits = self.teaching(inputs, forced_inputs)
             output = self.loss.forward(logits.transpose(2, 1), targets)
 
         # torch => numpy
@@ -298,10 +340,12 @@ class Attention(nn.Module):
         translate in to target language and display results. For checking how
         well model the model has fit the machine translation task.
         """
+        self.eval()
         inputs = torch.from_numpy(sequences).long().to(device)
         while True:
             idx = np.random.randint(0, sequences.shape[0])
-            out = self.translate(inputs[idx].view(1, -1))
+            with torch.no_grad():
+                out = self.translate(inputs[idx].view(1, -1))
             trans = [
                 self.targ_i2w[i] if i > 2 else ''
                 for i in out.detach().cpu().numpy().flatten()
@@ -345,27 +389,30 @@ def main():
 
     # load and process pre-trained embeddings
     # http://nlp.stanford.edu/data/glove.6B.zip
-    if os.path.isfile(datapath+'glove_embeddings/glove100_toxic.npy'):
-        embeds = np.load(datapath+'glove_embeddings/glove100_toxic.npy')
+    if os.path.isfile(datapath+'glove_embeddings/glove100_trans.npy'):
+        embeds = np.load(datapath+'glove_embeddings/glove100_trans.npy')
     else:
         embeds = get_embeddings(
             datapath+'glove_embeddings/glove.6B.100d.txt',
             [i for i in range(len(input_words))], input_words
         )
-        np.save(datapath+'glove_embeddings/glove100_toxic.npy', embeds)
+        np.save(datapath+'glove_embeddings/glove100_trans.npy', embeds)
     print('Word Embeddings shape:', embeds.shape)
 
     rnn = Attention(
         inputs.shape[1], targets.shape[1],  # maximum sequence lengths
         input_V, target_V,  # input and target vocabulary sizes
-        256,  # LSTM latent dimension size
-        1,  # number of stacked LSTM layers
+        256,  # encoder LSTM latent dimension size
+        256,  # decoder LSTM latent dimension size
+        1,  # number of stacked LSTM layers (only 1 works atm)
+        teacher_forcing=True,
+        blend_context=True,
         embeddings=embeds,
         LSTM_drop=0
     )
     rnn.fit(
         Xtrain, Ttrain, Ftrain, Xtest, Ttest, Ftest, target_w2i, target_i2w,
-        lr=1e-2, epochs=40, batch_sz=200
+        lr=1e-3, epochs=40, batch_sz=100, print_every=50
     )
     rnn.demo(Xtest, input_i2w)
 
