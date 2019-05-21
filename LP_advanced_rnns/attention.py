@@ -7,6 +7,7 @@ from nlp_utils import trainTestSplit_3way
 
 import torch
 from torch import nn
+import torch.nn.functional as F
 from torch import optim
 
 
@@ -16,8 +17,27 @@ torch.backends.cudnn.benchmark = True
 
 
 class Contextualizer(nn.Module):
-    def __init__(self):
+    def __init__(self, encode_dim_sz, decode_dim_sz, batch_first=True):
         super(Contextualizer, self).__init__()
+        self.encode_dim_sz = encode_dim_sz  # encoder latent dimensions
+        self.decode_dim_sz = decode_dim_sz  # decoder latent dimensions
+        self.batch_first = batch_first  # batch dimension before time
+        self.build()
+
+    def build(self):
+        self.layer1 = nn.Linear(
+            self.decode_dim_sz+self.encode_dim_sz*2, self.encode_dim_sz*2
+        )
+        self.layer2 = nn.Linear(self.encode_dim_sz*2, self.encode_dim_sz*2)
+
+    def forward(self, state, code):
+        if self.batch_first:
+            Z = torch.cat([state.expand(-1, code.shape[1], -1), code], dim=2)
+            alpha = F.softmax(self.layer2(self.layer1(Z)), dim=1)
+        else:
+            Z = torch.cat([state.expand(code.shape[1], -1, -1), code], dim=2)
+            alpha = F.softmax(self.layer2(self.layer1(Z)), dim=0)
+        return alpha @ code  # dot product of alpha and encoding = context
 
 
 class Attention(nn.Module):
@@ -63,7 +83,8 @@ class Attention(nn.Module):
         # encoder and decoder recurrent networks
         self.encoder_LSTM = nn.LSTM(
             100, self.encode_dim_sz, self.num_LSTM_layers,
-            bias=True, dropout=self.LSTM_drop, batch_first=True
+            bias=True, bidirectional=True, dropout=self.LSTM_drop,
+            batch_first=True
         )
         self.decoder_LSTM = nn.LSTM(
             self.encode_dim_sz*2, self.decode_dim_sz, self.num_LSTM_layers,
@@ -92,13 +113,22 @@ class Attention(nn.Module):
         false prediction.
         """
         # convert sequences of indices to word-vector matrices
-        X = self.encoder_embed(X)  # shape: (batch, T, D)
-        T = self.decoder_embed(T)
+        X = self.encoder_embed(X)  # shape: (batch, T, D*2)
+        # get bi-directional encoding of input sequence
+        encoding, _ = self.encoder_LSTM(X)
 
-        _, thought = self.encoder_LSTM(X)
-        output, _ = self.decoder_LSTM(T, thought)
+        # loop over time and generate output with decoder using attention
+        output = []
+        s = torch.zeros([1, 1, self.decode_dim_sz]).float().to(device)
+        c = torch.zeros([1, 1, self.decode_dim_sz]).float().to(device)
+        for t in range(self.targ_len):
+            context = self.context_block(s, encoding)
+            context = torch.cat([context, T[:, t, :].unsqueeze(1)], dim=2)
+            _, (s, c) = self.decoder_LSTM(context, (s, c))
+            output.append(s.squeeze())  # remove time dimension
 
         # get logits
+        output = torch.stack(output, dim=1)  # stack on time dimension
         return self.logistic(output)
 
     def translate(self, X):
