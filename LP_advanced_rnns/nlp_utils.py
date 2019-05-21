@@ -12,6 +12,7 @@ the Advanced NLP and RNNs course by Lazy Programmer.
 
 def load_samples(pth, num_samples):
     input_texts, target_texts, target_texts_inputs = [], [], []
+    # dataset from http://www.manythings.org/anki/
     for i, line in enumerate(open(pth+'translation/fra.txt'), 1):
         # only keep a limited number of samples
         if i > num_samples:
