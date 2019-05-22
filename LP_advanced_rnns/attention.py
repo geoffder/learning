@@ -158,14 +158,7 @@ class Attention(nn.Module):
 
     def translate(self, X):
         """
-        Forward pass without teacher forcing. Model will predict the next word
-        of the output based on the translation SO FAR, regardless of whether
-        it is correct or not. Used for testing during fitting, and also for
-        translating sequences after training is over.
-
-        Note: only adds previous output embedding to context if
-        teacher_forcing is being used. Quite slow. Try making a batched version
-        as an exercise and see how much faster I can get it. 
+        Deprecated... Non-batch translation (no teacher forcing).
         """
         out = np.zeros((X.shape[0], self.targ_len))
         for i in range(X.shape[0]):
@@ -197,7 +190,48 @@ class Attention(nn.Module):
 
             seq = seq[1:] + [self.targ_w2i['<pad>']]*(self.targ_len-t-1)
             out[i, :] = np.array(seq)  # ignore <sos> token
+
         return torch.from_numpy(out).long().to(device)
+
+    def batch_translate(self, X):
+        """
+        Forward pass without teacher forcing. Model will predict the next word
+        of the output based on the translation SO FAR, regardless of whether
+        it is correct or not. Used for testing during fitting, and also for
+        translating sequences after training is over.
+
+        Note: only adds previous output embedding to context if
+        teacher_forcing is being used.
+        """
+        X = self.encoder_embed(X)  # shape: (batch, T, D)
+        # get bi-directional encoding of input sequence
+        encoding, _ = self.encoder_LSTM(X)  # shape: (batch, T, D*2)
+
+        # loop over time and generate output with decoder using attention
+        output = []
+        start = [self.targ_w2i['<sos>'] for n in range(X.shape[0])]
+        s = torch.zeros([1, X.shape[0], self.decode_dim_sz]).float().to(device)
+        c = torch.zeros([1, X.shape[0], self.decode_dim_sz]).float().to(device)
+        preds = torch.LongTensor(start).to(device)
+        for t in range(self.targ_len):
+            # calculate context with with s(t-1) and encoder output
+            context = self.context_block(s, encoding)
+            if self.teacher_forcing:
+                vecs = self.decoder_embed(preds.unsqueeze(1))
+                # tack previous output embedding on to context vector
+                context = torch.cat([context, vecs], dim=2)
+                if self.blend_context:
+                    context = torch.tanh(self.dim_reducer(context))
+
+            # get next decoder output (and update states)
+            _, (s, c) = self.decoder_LSTM(context, (s, c))
+            # one token prediction per sample (for this timestep)
+            # squeeze out time dimension, we'll stack it back in later
+            preds = torch.argmax(self.logistic(s.squeeze(0)), dim=1).long()
+            output.append(preds)  # list of tensors shape (Nx1)
+
+        output = torch.stack(output, dim=1).long()  # stack on time dimension
+        return output
 
     def fit(self, Xtrain, Ttrain, Ftrain, Xtest, Ttest, Ftest, targ_w2i,
             targ_i2w, lr=1e-4, epochs=40, batch_sz=200, print_every=50):
@@ -220,7 +254,9 @@ class Attention(nn.Module):
             self.optimizer = optim.Adam(self.parameters(), lr=lr)
 
             n_batches = N // batch_sz
-            train_costs, train_accs, test_accs = [], [], []
+            train_costs, train_accs, teach_costs, teach_accs, trans_accs = [
+                [] for _ in range(5)
+            ]
             for i in range(epochs):
                 cost = 0
                 print("epoch:", i, "n_batches:", n_batches)
@@ -236,6 +272,15 @@ class Attention(nn.Module):
                     cost += self.train_step(Xbatch, Tbatch, Fbatch)
 
                     if j % print_every == 0:
+                        # training set cost and accuracy with forced teaching
+                        train_cost, train_acc = self.teaching_score(
+                            Xtrain[:batch_sz*3], Ttrain[:batch_sz*3],
+                            Ftrain[:batch_sz*3]
+                        )
+                        print(
+                            'training cost: %.2f, training acc: %.3f'
+                            % (train_cost, train_acc)
+                        )
                         # shuffle test set
                         inds = torch.randperm(Xtest.size()[0])
                         Xtest, Ttest = Xtest[inds], Ttest[inds]
@@ -256,17 +301,21 @@ class Attention(nn.Module):
                         print("translation accuracy: %.3f" % (trans_acc))
 
                 # for plotting
-                train_costs.append(cost / n_batches)
-                train_accs.append(forced_acc)
-                test_accs.append(trans_acc)
+                train_costs.append(cost / n_batches)  # training set
+                train_accs.append(train_acc)  # training set
+                teach_costs.append(forced_cost)  # validation set
+                teach_accs.append(forced_acc)  # validation set
+                trans_accs.append(trans_acc)  # validation set
 
             # plot cost and accuracy progression
             fig, axes = plt.subplots(1, 2)
             axes[0].plot(train_costs, label='training')
+            axes[0].plot(teach_costs, label='validation')
             axes[0].set_xlabel('Epoch')
             axes[0].set_ylabel('Cost')
-            axes[1].plot(train_accs, label='forced teaching')
-            axes[1].plot(test_accs, label='translation')
+            axes[1].plot(train_accs, label='teaching (training)')
+            axes[1].plot(teach_accs, label='teaching (validation)')
+            axes[1].plot(trans_accs, label='translation (vaidation)')
             axes[1].set_xlabel('Epoch')
             axes[1].set_ylabel('Accuracy')
             plt.legend()
@@ -319,13 +368,15 @@ class Attention(nn.Module):
         "Forward pass using free-translation (not teacher forced)."
         self.eval()
         with torch.no_grad():
-            seqs = self.translate(inputs)
+            # seqs = self.translate(inputs)
+            seqs = self.batch_translate(inputs)
         return seqs.detach().cpu().numpy()
 
     def trans_score(self, inputs, labels, pad_corr=False):
         "Calculate accuracy of translation. Option to adjust for padding."
         predictions = self.predict(inputs)
         labels = labels.cpu().numpy()
+        labels[labels == 0] = 2  # predictions are "padded" with 2 (<eos>)
         if pad_corr:
             pads = labels.size - np.count_nonzero(labels)
             acc = (np.sum(labels == predictions) - pads) / (labels.size - pads)
@@ -344,7 +395,7 @@ class Attention(nn.Module):
         while True:
             idx = np.random.randint(0, sequences.shape[0])
             with torch.no_grad():
-                out = self.translate(inputs[idx].view(1, -1))
+                out = self.batch_translate(inputs[idx].view(1, -1))
             trans = [
                 self.targ_i2w[i] if i > 2 else ''
                 for i in out.detach().cpu().numpy().flatten()
@@ -405,15 +456,16 @@ def main():
         256,  # decoder LSTM latent dimension size
         1,  # number of stacked LSTM layers (only 1 works atm)
         teacher_forcing=True,
-        blend_context=True,
+        blend_context=False,
         embeddings=embeds,
         LSTM_drop=0
     )
     rnn.fit(
         Xtrain, Ttrain, Ftrain, Xtest, Ttest, Ftest, target_w2i, target_i2w,
-        lr=1e-3, epochs=40, batch_sz=100, print_every=50
+        lr=1e-3, epochs=50, batch_sz=200, print_every=50
     )
-    rnn.demo(Xtest, input_i2w)
+    rnn.demo(inputs, input_i2w)  # all inputs (including training data)
+    # rnn.demo(Xtest, input_i2w)  # only validation set (hard mode)
 
 
 if __name__ == '__main__':
