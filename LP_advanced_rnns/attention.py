@@ -236,91 +236,91 @@ class Attention(nn.Module):
     def fit(self, Xtrain, Ttrain, Ftrain, Xtest, Ttest, Ftest, targ_w2i,
             targ_i2w, lr=1e-4, epochs=40, batch_sz=200, print_every=50):
 
-            N = Xtrain.shape[0]  # number of samples
-            self.targ_w2i = targ_w2i  # word to index for target vocabulary
-            self.targ_i2w = targ_i2w  # index to word for target vocabulary
+        N = Xtrain.shape[0]  # number of samples
+        self.targ_w2i = targ_w2i  # word to index for target vocabulary
+        self.targ_i2w = targ_i2w  # index to word for target vocabulary
 
-            # send data to GPU
-            Xtrain = torch.from_numpy(Xtrain).long().to(device)  # inputs
-            Xtest = torch.from_numpy(Xtest).long().to(device)
-            Ttrain = torch.from_numpy(Ttrain).long().to(device)  # targets
-            Ttest = torch.from_numpy(Ttest).long().to(device)
-            Ftrain = torch.from_numpy(Ftrain).long().to(device)  # forced
-            Ftest = torch.from_numpy(Ftest).long().to(device)
+        # send data to GPU
+        Xtrain = torch.from_numpy(Xtrain).long().to(device)  # inputs
+        Xtest = torch.from_numpy(Xtest).long().to(device)
+        Ttrain = torch.from_numpy(Ttrain).long().to(device)  # targets
+        Ttest = torch.from_numpy(Ttest).long().to(device)
+        Ftrain = torch.from_numpy(Ftrain).long().to(device)  # forced
+        Ftest = torch.from_numpy(Ftest).long().to(device)
 
-            self.loss = nn.CrossEntropyLoss(
-                reduction='mean', ignore_index=0).to(device)
-            # self.loss = nn.CrossEntropyLoss(reduction='mean').to(device)
-            self.optimizer = optim.Adam(self.parameters(), lr=lr)
+        self.loss = nn.CrossEntropyLoss(
+            reduction='mean', ignore_index=0).to(device)
+        # self.loss = nn.CrossEntropyLoss(reduction='mean').to(device)
+        self.optimizer = optim.Adam(self.parameters(), lr=lr)
 
-            n_batches = N // batch_sz
-            train_costs, train_accs, teach_costs, teach_accs, trans_accs = [
-                [] for _ in range(5)
-            ]
-            for i in range(epochs):
-                cost = 0
-                print("epoch:", i, "n_batches:", n_batches)
-                # shuffle dataset for next epoch of batches
-                inds = torch.randperm(Xtrain.size()[0])
-                Xtrain, Ttrain = Xtrain[inds], Ttrain[inds]
-                Ftrain = Ftrain[inds]
-                for j in range(n_batches):
-                    Xbatch = Xtrain[j*batch_sz:(j*batch_sz+batch_sz)]
-                    Tbatch = Ttrain[j*batch_sz:(j*batch_sz+batch_sz)]
-                    Fbatch = Ftrain[j*batch_sz:(j*batch_sz+batch_sz)]
+        n_batches = N // batch_sz
+        train_costs, train_accs, teach_costs, teach_accs, trans_accs = [
+            [] for _ in range(5)
+        ]
+        for i in range(epochs):
+            cost = 0
+            print("epoch:", i, "n_batches:", n_batches)
+            # shuffle dataset for next epoch of batches
+            inds = torch.randperm(Xtrain.size()[0])
+            Xtrain, Ttrain = Xtrain[inds], Ttrain[inds]
+            Ftrain = Ftrain[inds]
+            for j in range(n_batches):
+                Xbatch = Xtrain[j*batch_sz:(j*batch_sz+batch_sz)]
+                Tbatch = Ttrain[j*batch_sz:(j*batch_sz+batch_sz)]
+                Fbatch = Ftrain[j*batch_sz:(j*batch_sz+batch_sz)]
 
-                    cost += self.train_step(Xbatch, Tbatch, Fbatch)
+                cost += self.train_step(Xbatch, Tbatch, Fbatch)
 
-                    if j % print_every == 0:
-                        # training set cost and accuracy with forced teaching
-                        train_cost, train_acc = self.teaching_score(
-                            Xtrain[:batch_sz*3], Ttrain[:batch_sz*3],
-                            Ftrain[:batch_sz*3]
-                        )
-                        print(
-                            'training cost: %.2f, training acc: %.3f'
-                            % (train_cost, train_acc)
-                        )
-                        # shuffle test set
-                        inds = torch.randperm(Xtest.size()[0])
-                        Xtest, Ttest = Xtest[inds], Ttest[inds]
-                        Ftest = Ftest[inds]
-                        # validation cost and accuracy with forced teaching
-                        forced_cost, forced_acc = self.teaching_score(
-                            Xtest, Ttest, Ftest
-                        )
-                        print(
-                            'teaching cost: %.2f, teaching acc: %.3f'
-                            % (forced_cost, forced_acc)
-                        )
-                        # accuracy during 'free' translation (non-forced)
-                        # only sample, since it is much slower than forced
-                        trans_acc = self.trans_score(
-                            Xtest[:batch_sz], Ttest[:batch_sz]
-                        )
-                        print("translation accuracy: %.3f" % (trans_acc))
+                if j % print_every == 0:
+                    # training set cost and accuracy with forced teaching
+                    train_cost, train_acc = self.teaching_score(
+                        Xtrain[:batch_sz*3], Ttrain[:batch_sz*3],
+                        Ftrain[:batch_sz*3]
+                    )
+                    print(
+                        'training cost: %.2f, training acc: %.3f'
+                        % (train_cost, train_acc)
+                    )
+                    # shuffle test set
+                    inds = torch.randperm(Xtest.size()[0])
+                    Xtest, Ttest = Xtest[inds], Ttest[inds]
+                    Ftest = Ftest[inds]
+                    # validation cost and accuracy with forced teaching
+                    forced_cost, forced_acc = self.teaching_score(
+                        Xtest, Ttest, Ftest
+                    )
+                    print(
+                        'teaching cost: %.2f, teaching acc: %.3f'
+                        % (forced_cost, forced_acc)
+                    )
+                    # accuracy during 'free' translation (non-forced)
+                    # only sample, since it is much slower than forced
+                    trans_acc = self.trans_score(
+                        Xtest[:batch_sz], Ttest[:batch_sz]
+                    )
+                    print("translation accuracy: %.3f" % (trans_acc))
 
-                # for plotting
-                train_costs.append(cost / n_batches)  # training set
-                train_accs.append(train_acc)  # training set
-                teach_costs.append(forced_cost)  # validation set
-                teach_accs.append(forced_acc)  # validation set
-                trans_accs.append(trans_acc)  # validation set
+            # for plotting
+            train_costs.append(cost / n_batches)  # training set
+            train_accs.append(train_acc)  # training set
+            teach_costs.append(forced_cost)  # validation set
+            teach_accs.append(forced_acc)  # validation set
+            trans_accs.append(trans_acc)  # validation set
 
-            # plot cost and accuracy progression
-            fig, axes = plt.subplots(1, 2)
-            axes[0].plot(train_costs, label='training')
-            axes[0].plot(teach_costs, label='validation')
-            axes[0].set_xlabel('Epoch')
-            axes[0].set_ylabel('Cost')
-            axes[1].plot(train_accs, label='teaching (training)')
-            axes[1].plot(teach_accs, label='teaching (validation)')
-            axes[1].plot(trans_accs, label='translation (vaidation)')
-            axes[1].set_xlabel('Epoch')
-            axes[1].set_ylabel('Accuracy')
-            plt.legend()
-            fig.tight_layout()
-            plt.show()
+        # plot cost and accuracy progression
+        fig, axes = plt.subplots(1, 2)
+        axes[0].plot(train_costs, label='training')
+        axes[0].plot(teach_costs, label='validation')
+        axes[0].set_xlabel('Epoch')
+        axes[0].set_ylabel('Cost')
+        axes[1].plot(train_accs, label='teaching (training)')
+        axes[1].plot(teach_accs, label='teaching (validation)')
+        axes[1].plot(trans_accs, label='translation (vaidation)')
+        axes[1].set_xlabel('Epoch')
+        axes[1].set_ylabel('Accuracy')
+        plt.legend()
+        fig.tight_layout()
+        plt.show()
 
     def train_step(self, inputs, targets, forced_inputs):
         self.train()  # set the model to training mode
