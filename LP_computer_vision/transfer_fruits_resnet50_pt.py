@@ -244,7 +244,7 @@ def main():
     # all of the fruits
     classes = [name for name in os.listdir(train_path)
                if os.path.isdir(train_path+name)]
-    
+
     train_set = Fruits(
         train_path, classes,
         transforms.Compose([
